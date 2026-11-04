@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.0.0</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>InterviewAI transcribes your side of the call on this Mac. Audio is never recorded.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>InterviewAI turns both sides of the call into text on this Mac, so it can suggest answers.</string>
+	<key>NSAudioCaptureUsageDescription</key>
+	<string>InterviewAI listens to the other side of the call through system audio, transcribed on this Mac.</string>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>InterviewAI reads your calendar to show upcoming meetings and name saved meetings after their events. It never creates or changes an event.</string>
+	<key>NSCalendarsUsageDescription</key>
+	<string>InterviewAI reads your calendar to show upcoming meetings and name saved meetings after their events. It never creates or changes an event.</string>
+</dict>
+</plist>
