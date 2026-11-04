@@ -90,6 +90,33 @@ struct GeneralSettings: View {
                 Text("Overlay opacity")
             }
         }
+        Section("Phone Display") {
+            Toggle("Show the session on my phone", isOn: Binding(
+                get: { model.phoneDisplayEnabled },
+                set: { model.phoneDisplayEnabled = $0 }
+            ))
+            if model.phoneDisplayEnabled {
+                if let address = model.phoneDisplay.pageAddress {
+                    Text("Open this on your phone, on the same Wi-Fi:")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text(address)
+                        .font(.headline)
+                        .textSelection(.enabled)
+                } else if let problem = model.phoneDisplay.problem {
+                    Text(problem)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text("Starting…")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Text("The page shows the live answer, the conversation, and the action buttons, and its taps work like ⌘1 to ⌘7. While this is on, anyone on the same network can open the page, so only use it on a network you trust.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
         Section("Reading") {
             Toggle("Highlight Keywords", isOn: $highlightKeywords)
             Text("The bold terms and the figures in an answer get a yellow wash, so the point is easy to spot while you talk.")
@@ -381,7 +408,7 @@ struct PermissionsSettings: View {
             Text("Screen Recording is what lets InterviewAI hear the other side of the call. InterviewAI is a normal visible app: no hidden mode, no process disguise.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            Text("macOS ties this grant to the exact binary, so a fresh build can read Not granted even when an older build is ticked in System Settings. The check here never asks by itself; listening asks at most once per launch. A stable signing identity keeps the grant across rebuilds: scripts/create-signing-identity.sh sets one up, once.")
+            Text("macOS ties this grant to the exact binary, so a fresh build can read Not granted even when an older build is ticked in System Settings. The check here never asks by itself; listening asks at most once per launch. A stable signing identity keeps the grant across rebuilds.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

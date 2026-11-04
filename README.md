@@ -4,7 +4,7 @@
   <img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT">
   <img src="https://img.shields.io/badge/macOS-14%2B-black" alt="macOS 14 or later">
   <img src="https://img.shields.io/badge/Swift-6-orange" alt="Swift 6">
-  <a href="https://github.com/splashdeluxe/InterviewAI/releases/tag/v1.0.0"><img src="https://img.shields.io/badge/Release-1.0.0-green" alt="Release 1.0.0"></a>
+  <a href="https://github.com/splashdeluxe/InterviewAI/releases/tag/v1.1.0"><img src="https://img.shields.io/badge/Release-1.1.0-green" alt="Release 1.1.0"></a>
   <a href="https://github.com/splashdeluxe/InterviewAI/stargazers"><img src="https://img.shields.io/github/stars/splashdeluxe/InterviewAI?style=flat" alt="GitHub stars"></a>
 </p>
 
@@ -15,7 +15,7 @@ A free, native Mac copilot for interviews and meetings. It listens to both sides
 <p align="center">⭐ <strong>If InterviewAI helps you, a star helps the next person find it.</strong></p>
 
 <p align="center">
-<a href="https://github.com/splashdeluxe/InterviewAI/releases/tag/v1.0.0">Release 1.0.0</a> · <a href="#quick-start">Quick start</a> · <a href="#what-it-does">What it does</a> · <a href="#privacy">Privacy</a> · <a href="#report-a-bug">Report a bug</a> · <a href="#faq">FAQ</a> · <a href="https://github.com/splashdeluxe/InterviewAI/issues">Issues</a>
+<a href="https://github.com/splashdeluxe/InterviewAI/releases/tag/v1.1.0">Release 1.1.0</a> · <a href="#quick-start">Quick start</a> · <a href="#what-it-does">What it does</a> · <a href="#privacy">Privacy</a> · <a href="#report-a-bug">Report a bug</a> · <a href="#faq">FAQ</a> · <a href="https://github.com/splashdeluxe/InterviewAI/issues">Issues</a>
 </p>
 
 ---
@@ -29,6 +29,7 @@ An original Swift app for macOS. No account, no licence key, no trial, no quota,
 - **Both sides, live** - System audio (them) and your microphone (you) transcribed at the same time, on device. Nothing is recorded.
 - **Answers while you talk** - Auto Answer speaks up when a question settles, or run the action row yourself: What Should I Say, Clarify, Recap, Follow-Up, Answer, Code Hint, Brainstorm, on ⌘1 to ⌘7.
 - **A floating overlay** - A borderless panel over Zoom, Teams, or Meet with the live transcript, the streaming answer, and an ask box. ⌘⇧H shows or hides it, ⌘⇧S attaches a screenshot of the front window.
+- **Your phone as a second screen** - Turn on Phone Display in Settings and the session appears in your phone browser on the same Wi-Fi: the live answer, the conversation, and the action buttons, whose taps work like ⌘1 to ⌘7. The overlay stays off your shared screen, and nothing leaves your local network.
 - **Grounded in your files** - Add your resume, the job description, and your notes on the Context page. Pinned files go into every answer; the rest rank by keyword match, locally.
 - **A profile for the role** - One structured profile with your sources, standing instructions for every answer, talking points with honest gap answers, company intel, and a cover letter.
 - **Meetings that keep themselves** - Every finished call is saved with transcript, notes, a summary, and a follow-up draft. Ask searches your meetings and context files, on the Mac.
@@ -37,7 +38,7 @@ An original Swift app for macOS. No account, no licence key, no trial, no quota,
 
 ## Quick start
 
-Fastest: download **InterviewAI-1.0.0.dmg** from the [release page](https://github.com/splashdeluxe/InterviewAI/releases/tag/v1.0.0), open it, drag the app into Applications, and right-click it once to choose Open (the app is unsigned, so macOS asks the first time).
+Fastest: download **InterviewAI-1.1.0.dmg** from the [release page](https://github.com/splashdeluxe/InterviewAI/releases/tag/v1.1.0), open it, drag the app into Applications, and right-click it once to choose Open (the app is unsigned, so macOS asks the first time).
 
 Or build from source. That needs macOS 14 or later and Xcode installed (for the Swift toolchain). You never open Xcode.
 
@@ -101,7 +102,7 @@ No. Audio is transcribed in memory and never written to disk. The transcript, no
 No. InterviewAI is a native macOS app and uses Mac-only frameworks for system audio.
 
 **Where is the download?**
-On the [release page](https://github.com/splashdeluxe/InterviewAI/releases/tag/v1.0.0): InterviewAI-1.0.0.dmg, about 19 MB. Building from source with `./build.sh --open` works too.
+On the [release page](https://github.com/splashdeluxe/InterviewAI/releases/tag/v1.1.0): InterviewAI-1.1.0.dmg, about 19 MB. Building from source with `./build.sh --open` works too.
 
 ## Support
 

@@ -159,6 +159,7 @@ final class AppModel {
 
     let session = LiveSession()
     let overlay = OverlayController()
+    let phoneDisplay = PhoneDisplay()
 
     /// Whether the menu bar icon is inserted. Held on the model, NOT in
     /// an @AppStorage in the App struct: the MenuBarExtra isInserted
@@ -174,6 +175,17 @@ final class AppModel {
         }
     }
 
+    /// The phone display (C-lite): a local-network web page mirroring
+    /// the live session to a phone browser. Off by default; the didSet
+    /// starts and stops the little server.
+    var phoneDisplayEnabled: Bool = UserDefaults.standard.object(forKey: "phoneDisplay.enabled") as? Bool ?? false {
+        didSet {
+            guard phoneDisplayEnabled != oldValue else { return }
+            UserDefaults.standard.set(phoneDisplayEnabled, forKey: "phoneDisplay.enabled")
+            phoneDisplay.apply(enabled: phoneDisplayEnabled)
+        }
+    }
+
     /// The active mode id: a built-in id or a custom mode's idString.
     var activeModeID: String = UserDefaults.standard.string(forKey: "mode.active") ?? "looking-for-work" {
         didSet { UserDefaults.standard.set(activeModeID, forKey: "mode.active") }
@@ -183,6 +195,8 @@ final class AppModel {
         self.container = container
         session.model = self
         overlay.model = self
+        phoneDisplay.bind(session: session)
+        if phoneDisplayEnabled { phoneDisplay.apply(enabled: true) }
         HotkeyCenter.shared.model = self
         HotkeyCenter.shared.registerAll()
         reclassifyStoredContextFiles()
