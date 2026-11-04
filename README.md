@@ -4,7 +4,7 @@
   <img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT">
   <img src="https://img.shields.io/badge/macOS-14%2B-black" alt="macOS 14 or later">
   <img src="https://img.shields.io/badge/Swift-6-orange" alt="Swift 6">
-  <a href="https://github.com/splashdeluxe/InterviewAI/releases/tag/v1.1.0"><img src="https://img.shields.io/badge/Release-1.1.0-green" alt="Release 1.1.0"></a>
+  <a href="https://github.com/splashdeluxe/InterviewAI/releases/tag/v1.2.0"><img src="https://img.shields.io/badge/Release-1.2.0-green" alt="Release 1.2.0"></a>
   <a href="https://github.com/splashdeluxe/InterviewAI/stargazers"><img src="https://img.shields.io/github/stars/splashdeluxe/InterviewAI?style=flat" alt="GitHub stars"></a>
 </p>
 
@@ -15,7 +15,7 @@ A free, native Mac copilot for interviews and meetings. It listens to both sides
 <p align="center">⭐ <strong>If InterviewAI helps you, a star helps the next person find it.</strong></p>
 
 <p align="center">
-<a href="https://github.com/splashdeluxe/InterviewAI/releases/tag/v1.1.0">Release 1.1.0</a> · <a href="#quick-start">Quick start</a> · <a href="#what-it-does">What it does</a> · <a href="#privacy">Privacy</a> · <a href="#report-a-bug">Report a bug</a> · <a href="#faq">FAQ</a> · <a href="https://github.com/splashdeluxe/InterviewAI/issues">Issues</a>
+<a href="https://github.com/splashdeluxe/InterviewAI/releases/tag/v1.2.0">Release 1.2.0</a> · <a href="#quick-start">Quick start</a> · <a href="#what-it-does">What it does</a> · <a href="#privacy">Privacy</a> · <a href="#report-a-bug">Report a bug</a> · <a href="#faq">FAQ</a> · <a href="https://github.com/splashdeluxe/InterviewAI/issues">Issues</a>
 </p>
 
 ---
@@ -38,7 +38,7 @@ An original Swift app for macOS. No account, no licence key, no trial, no quota,
 
 ## Quick start
 
-Fastest: download **InterviewAI-1.1.0.dmg** from the [release page](https://github.com/splashdeluxe/InterviewAI/releases/tag/v1.1.0), open it, drag the app into Applications, and right-click it once to choose Open (the app is unsigned, so macOS asks the first time).
+Fastest: download **InterviewAI-1.2.0.dmg** from the [release page](https://github.com/splashdeluxe/InterviewAI/releases/tag/v1.2.0), open it, drag the app into Applications, and right-click it once to choose Open (the app is unsigned, so macOS asks the first time).
 
 Or build from source. That needs macOS 14 or later and Xcode installed (for the Swift toolchain). You never open Xcode.
 
@@ -50,7 +50,7 @@ cd InterviewAI
 
 Then, in the app:
 
-1. **Settings, Providers** - Leave Ollama (run `ollama pull llama3.2:3b` first), or pick your endpoint and key and press Test Connection. Keys live in the Keychain.
+1. **Settings, Providers** - Leave Ollama (run `ollama pull llama3.2:1b` first), or pick your endpoint and key and press Test Connection. Keys live in the Keychain.
 2. **Settings, Permissions** - Grant Microphone, Speech Recognition, and Screen Recording. Screen Recording is how system audio is heard.
 3. **Settings, Speech** - Parakeet Ultra is the default engine and downloads its model once. Whisper and Apple Speech are the alternatives.
 4. **Context page** - Add your resume and the job description.
@@ -102,7 +102,7 @@ No. Audio is transcribed in memory and never written to disk. The transcript, no
 No. InterviewAI is a native macOS app and uses Mac-only frameworks for system audio.
 
 **Where is the download?**
-On the [release page](https://github.com/splashdeluxe/InterviewAI/releases/tag/v1.1.0): InterviewAI-1.1.0.dmg, about 19 MB. Building from source with `./build.sh --open` works too.
+On the [release page](https://github.com/splashdeluxe/InterviewAI/releases/tag/v1.2.0): InterviewAI-1.2.0.dmg, about 19 MB. Building from source with `./build.sh --open` works too.
 
 ## Support
 

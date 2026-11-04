@@ -140,7 +140,7 @@ enum ProviderSettings {
         let defaults = UserDefaults.standard
         let kind = BrainConfig.Kind(rawValue: defaults.string(forKey: "provider.kind") ?? "ollama") ?? .ollama
         let base = defaults.string(forKey: "provider.baseURL") ?? (kind == .ollama ? "http://localhost:11434" : "https://api.openai.com")
-        let model = defaults.string(forKey: "provider.model") ?? (kind == .ollama ? "llama3.2:3b" : "gpt-4o-mini")
+        let model = defaults.string(forKey: "provider.model") ?? (kind == .ollama ? "llama3.2:1b" : "gpt-4o-mini")
         return BrainConfig(kind: kind, baseURL: base, model: model, visionModel: defaults.bool(forKey: "provider.vision"))
     }
 

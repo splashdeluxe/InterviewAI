@@ -18,7 +18,7 @@ public struct BrainConfig: Equatable, Sendable {
         self.visionModel = visionModel
     }
 
-    public static let localDefault = BrainConfig(kind: .ollama, baseURL: "http://localhost:11434", model: "llama3.2:3b")
+    public static let localDefault = BrainConfig(kind: .ollama, baseURL: "http://localhost:11434", model: "llama3.2:1b")
 }
 
 public enum BrainError: Error, LocalizedError {

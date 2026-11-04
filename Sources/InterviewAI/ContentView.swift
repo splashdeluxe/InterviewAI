@@ -4,7 +4,6 @@ import SwiftUI
 struct ContentView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.openSettings) private var openSettings
-    @State private var cornerMenuShown = false
 
     var body: some View {
         NavigationSplitView {
@@ -84,12 +83,31 @@ struct ContentView: View {
         }
     }
 
-    /// The corner menu, shaped after the reference Nils sent: one round
-    /// button at the foot of the sidebar, opening a small dark card with
-    /// Keyboard Shortcuts, Report an Issue, and Settings.
+    /// The corner menu: one round button at the foot of the sidebar,
+    /// opening a native menu. A native menu renders correctly in both
+    /// appearances (the old custom dark popover could come up white on
+    /// white) and gives the shortcuts a real submenu.
     private var cornerMenuButton: some View {
-        Button {
-            cornerMenuShown.toggle()
+        Menu {
+            Menu {
+                ForEach(ShortcutsView.rows) { row in
+                    Text("\(row.keys) — \(row.action)")
+                }
+            } label: {
+                Label("Keyboard Shortcuts", systemImage: "keyboard")
+            }
+            Button {
+                ReportIssueWindow.show()
+            } label: {
+                Label("Report an Issue", systemImage: "ant")
+            }
+            Divider()
+            Button {
+                openSettings()
+            } label: {
+                Label("Settings", systemImage: "gearshape")
+            }
+            .keyboardShortcut(",", modifiers: .command)
         } label: {
             Image(systemName: "line.3.horizontal")
                 .font(.system(size: 12, weight: .semibold))
@@ -97,41 +115,8 @@ struct ContentView: View {
                 .frame(width: 26, height: 26)
                 .background(Circle().fill(Surface.ink))
         }
-        .buttonStyle(.plain)
+        .menuIndicator(.hidden)
         .help("Menu")
-        .popover(isPresented: $cornerMenuShown, attachmentAnchor: .point(.top), arrowEdge: .bottom) {
-            cornerMenu
-        }
-    }
-
-    /// Close the card first, then run the row's action a beat later.
-    /// Acting in the same tick as the dismissal can swallow the action:
-    /// the Settings scene and the browser open both get dropped when
-    /// they fire while the popover is still tearing down.
-    private func cornerAction(_ action: @escaping () -> Void) {
-        cornerMenuShown = false
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { action() }
-    }
-
-    private var cornerMenu: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            CornerMenuRow(icon: "keyboard", title: "Keyboard Shortcuts", shortcut: "⌘/") {
-                cornerAction { ShortcutsWindow.show() }
-            }
-            CornerMenuRow(icon: "ant", title: "Report an Issue", shortcut: nil) {
-                cornerAction { ReportIssueWindow.show() }
-            }
-            Rectangle()
-                .fill(Color.white.opacity(0.14))
-                .frame(height: 1)
-                .padding(.vertical, Space.xs)
-            CornerMenuRow(icon: "gearshape", title: "Settings", shortcut: "⌘,") {
-                cornerAction { openSettings() }
-            }
-        }
-        .padding(Space.sm)
-        .frame(width: 264)
-        .background(Surface.ink)
     }
 
     @ViewBuilder
@@ -147,37 +132,3 @@ struct ContentView: View {
     }
 }
 
-/// One row of the corner menu: icon, title, and the shortcut in muted
-/// type at the trailing edge, with a soft highlight under the pointer.
-struct CornerMenuRow: View {
-    let icon: String
-    let title: String
-    let shortcut: String?
-    let action: () -> Void
-    @State private var hovering = false
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: Space.md) {
-                Image(systemName: icon)
-                    .frame(width: 18)
-                Text(title)
-                Spacer(minLength: 0)
-                if let shortcut {
-                    Text(shortcut).foregroundStyle(.white.opacity(0.45))
-                }
-            }
-            .font(.callout)
-            .foregroundStyle(.white)
-            .padding(.horizontal, Space.sm)
-            .padding(.vertical, 6)
-            .background(
-                RoundedRectangle(cornerRadius: Radius.control, style: .continuous)
-                    .fill(Color.white.opacity(hovering ? 0.10 : 0))
-            )
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .onHover { hovering = $0 }
-    }
-}

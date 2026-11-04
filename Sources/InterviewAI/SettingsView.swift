@@ -170,7 +170,7 @@ struct GeneralSettings: View {
 struct ProvidersSettings: View {
     @AppStorage("provider.kind") private var kind = "ollama"
     @AppStorage("provider.baseURL") private var baseURL = "http://localhost:11434"
-    @AppStorage("provider.model") private var modelName = "llama3.2:3b"
+    @AppStorage("provider.model") private var modelName = "llama3.2:1b"
     @AppStorage("provider.vision") private var vision = false
     @State private var keyDraft = ""
     @State private var keySaved = false
@@ -195,13 +195,13 @@ struct ProvidersSettings: View {
                 }
                 if newKind == "ollama", baseURL == "https://api.openai.com" {
                     baseURL = "http://localhost:11434"
-                    modelName = "llama3.2:3b"
+                    modelName = "llama3.2:1b"
                 }
             }
             TextField("Base URL", text: $baseURL)
             TextField("Model", text: $modelName)
             Toggle("This model can read images", isOn: $vision)
-            Text("Local Ollama is free and private: pull a model with `ollama pull llama3.2:3b`, or a vision model like `llama3.2-vision`. Cloud endpoints use your own key and your own bill with that provider. InterviewAI adds nothing on top.")
+            Text("Local Ollama is free and private: pull a model with `ollama pull llama3.2:1b`, or a vision model like `llama3.2-vision`. The 1B model is the fastest local option. Cloud endpoints use your own key and your own bill with that provider. InterviewAI adds nothing on top.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
