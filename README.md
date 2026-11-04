@@ -53,6 +53,8 @@ Then, in the app:
 4. **Context page** - Add your resume and the job description.
 5. **Live page** - Start Listening, or press ⌘⇧H for the overlay.
 
+Building from the command line instead: `./build.sh` installs the app into your Applications folder. The test suite runs with `swift test`.
+
 ## How it works
 
 ```mermaid
