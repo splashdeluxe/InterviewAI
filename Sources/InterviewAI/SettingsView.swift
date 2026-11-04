@@ -432,7 +432,23 @@ struct PermissionsSettings: View {
 }
 
 struct HelpSettings: View {
+    @State private var setupTest = SetupTest()
+
     var body: some View {
+        Section("Setup Test") {
+            Text("Checks the chain an answer depends on: the model must answer 1 plus 1 correctly through the real prompt path, the speech model must load, and the permissions must be in place. Run it before a call you care about.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+            Button(setupTest.isRunning ? "Testing…" : "Run Setup Test") {
+                Task { await setupTest.run() }
+            }
+            .disabled(setupTest.isRunning)
+            ForEach(setupTest.lines) { line in
+                Label(line.text, systemImage: line.ok ? "checkmark.circle.fill" : "xmark.circle.fill")
+                    .font(.callout)
+                    .foregroundStyle(line.ok ? Color.green : Color.red)
+            }
+        }
         Section("How It Works") {
             Text("1. Add your resume and the job description on the Context page.")
             Text("2. Pick a mode. Looking for Work fits most interviews.")

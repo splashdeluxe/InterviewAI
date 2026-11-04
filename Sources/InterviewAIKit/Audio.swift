@@ -453,11 +453,15 @@ public struct ChunkPolicy: Sendable {
     public static let silenceRMS: Float = 0.006
     public static let sampleRate = 16_000
     /// Cut once this much audio is buffered and a pause arrives.
-    public static let minChunkSeconds = 4.0
+    /// 2.5 s (was 4.0): a line lands about two seconds sooner, which
+    /// is the difference between a transcript that feels live and one
+    /// that feels stuck.
+    public static let minChunkSeconds = 2.5
     /// Cut no matter what once this much audio is buffered.
     public static let maxChunkSeconds = 15.0
-    /// The pause that ends a chunk.
-    public static let pauseSeconds = 0.9
+    /// The pause that ends a chunk. 0.6 s (was 0.9): a natural breath
+    /// ends most spoken sentences.
+    public static let pauseSeconds = 0.6
 
     private(set) public var bufferedSamples = 0
     private(set) public var trailingSilentSamples = 0

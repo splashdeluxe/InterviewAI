@@ -133,6 +133,18 @@ func builtInModes() {
     #expect(policy.hasSpeech == false)
 }
 
+@Test func chunkPolicyCutsSoonerOnAShortPause() {
+    var policy = ChunkPolicy()
+    let halfSecond = ChunkPolicy.sampleRate / 2
+    // Three seconds of speech: no cut while words are still coming.
+    for _ in 0..<6 {
+        #expect(policy.feed(blockSamples: halfSecond, rms: 0.05) == false)
+    }
+    // A half-second pause is a breath, not an ending; a full second cuts.
+    #expect(policy.feed(blockSamples: halfSecond, rms: 0.001) == false)
+    #expect(policy.feed(blockSamples: halfSecond, rms: 0.001) == true)
+}
+
 @Test func chunkPolicyHardCapAndSilence() {
     var policy = ChunkPolicy()
     let halfSecond = ChunkPolicy.sampleRate / 2
