@@ -37,7 +37,9 @@ An original Swift app for macOS. No account, no licence key, no trial, no quota,
 
 ## Quick start
 
-Needs macOS 14 or later and Xcode installed (for the Swift toolchain). You never open Xcode.
+Fastest: download **InterviewAI-1.0.0.dmg** from the [release page](https://github.com/splashdeluxe/InterviewAI/releases/tag/v1.0.0), open it, drag the app into Applications, and right-click it once to choose Open (the app is unsigned, so macOS asks the first time).
+
+Or build from source. That needs macOS 14 or later and Xcode installed (for the Swift toolchain). You never open Xcode.
 
 ```bash
 git clone https://github.com/splashdeluxe/InterviewAI.git
@@ -98,8 +100,8 @@ No. Audio is transcribed in memory and never written to disk. The transcript, no
 **Does it work on Windows?**
 No. InterviewAI is a native macOS app and uses Mac-only frameworks for system audio.
 
-**Why is there no download on the release page?**
-The app is unsigned and built from source, so the release is the source itself. `./build.sh --open` builds and installs it in one step.
+**Where is the download?**
+On the [release page](https://github.com/splashdeluxe/InterviewAI/releases/tag/v1.0.0): InterviewAI-1.0.0.dmg, about 19 MB. Building from source with `./build.sh --open` works too.
 
 ## Support
 
