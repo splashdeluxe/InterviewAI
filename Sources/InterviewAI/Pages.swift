@@ -241,6 +241,45 @@ struct TranscriptRow: View {
     }
 }
 
+/// A generated document (profile section, summary, follow-up) shown
+/// with its markdown marks turned into shape: headings read as
+/// headings, bullets as bullets, and inline bold renders bold. The
+/// stored text keeps its marks; only the display cleans up.
+struct DocTextView: View {
+    let text: String
+    var font: Font = .callout
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Space.xs) {
+            ForEach(Array(MarkdownLite.lines(text).enumerated()), id: \.offset) { _, line in
+                switch line.kind {
+                case .heading:
+                    Text(inline(line.text))
+                        .font(font.weight(.semibold))
+                        .padding(.top, Space.xs)
+                case .bullet:
+                    HStack(alignment: .top, spacing: Space.xs) {
+                        Text("•")
+                        Text(inline(line.text))
+                    }
+                    .font(font)
+                case .paragraph:
+                    Text(inline(line.text))
+                        .font(font)
+                }
+            }
+        }
+        .textSelection(.enabled)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// Inline markdown (bold, italic) rendered; a line the parser
+    /// rejects shows as plain text instead of not at all.
+    private func inline(_ raw: String) -> AttributedString {
+        (try? AttributedString(markdown: raw)) ?? AttributedString(raw)
+    }
+}
+
 /// A transcript that runs downward and follows the newest line as it
 /// lands, so the latest words are always readable, and stays scrollable:
 /// scroll up and it leaves you reading until you come back to the bottom.
@@ -296,9 +335,10 @@ struct AutoScrollTranscript: View {
 /// Transcript lines, shared shape with the overlay.
 struct OverlayTranscriptList: View {
     @Environment(AppModel.self) private var model
+    @AppStorage("reading.transcriptFontSize") private var transcriptFontSize = 13.0
 
     var body: some View {
-        AutoScrollTranscript(segments: model.session.displaySegments)
+        AutoScrollTranscript(segments: model.session.displaySegments, font: .system(size: transcriptFontSize))
     }
 }
 
@@ -310,6 +350,17 @@ struct MeetingsPage: View {
     @Query(sort: \Meeting.startedAt, order: .reverse) private var meetings: [Meeting]
     @State private var search = ""
     @State private var tab = "Transcript"
+    @AppStorage("reading.transcriptFontSize") private var transcriptFontSize = 13.0
+
+    /// List rows are narrow: a composed title ("General · Nov 4, 2026
+    /// at 9:19 PM") truncates before the time shows. Rows carry mode
+    /// plus time of day; the date already sits on the line below, and
+    /// the detail header keeps the full title.
+    private func rowTitle(_ meeting: Meeting) -> String {
+        let composedPrefix = "\(meeting.modeName) · "
+        guard meeting.title.hasPrefix(composedPrefix) else { return meeting.title }
+        return composedPrefix + meeting.startedAt.formatted(date: .omitted, time: .shortened)
+    }
 
     private var visible: [Meeting] {
         guard !search.isEmpty else { return meetings }
@@ -326,7 +377,7 @@ struct MeetingsPage: View {
         NavigationSplitView {
             List(visible, selection: $model.selectedMeeting) { meeting in
                 VStack(alignment: .leading, spacing: Space.xs) {
-                    Text(meeting.title)
+                    Text(rowTitle(meeting))
                         .lineLimit(1)
                     Text(meeting.startedAt, style: .date)
                         .font(.caption)
@@ -392,12 +443,14 @@ struct MeetingsPage: View {
                 case "Summary":
                     ScrollView {
                         VStack(alignment: .leading, spacing: Space.lg) {
-                            Text(meeting.summary.isEmpty ? "No summary yet. It is written when the call stops, if a model is reachable." : meeting.summary)
-                                .textSelection(.enabled)
+                            if meeting.summary.isEmpty {
+                                Text("No summary yet. It is written when the call stops, if a model is reachable.")
+                            } else {
+                                DocTextView(text: meeting.summary)
+                            }
                             if !meeting.followUp.isEmpty {
                                 Text("Follow-Up Draft").font(.headline)
-                                Text(meeting.followUp)
-                                    .textSelection(.enabled)
+                                DocTextView(text: meeting.followUp)
                             }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -406,7 +459,7 @@ struct MeetingsPage: View {
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: Space.sm) {
                             ForEach(meeting.segments) { segment in
-                                TranscriptRow(segment: segment)
+                                TranscriptRow(segment: segment, font: .system(size: transcriptFontSize))
                             }
                         }
                     }

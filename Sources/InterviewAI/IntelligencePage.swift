@@ -248,10 +248,7 @@ struct IntelligencePage: View {
                         .background(Surface.inset, in: RoundedRectangle(cornerRadius: Radius.control))
                 } else {
                     ScrollView {
-                        Text(current.text)
-                            .font(.callout)
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                        DocTextView(text: current.text)
                     }
                     .frame(maxHeight: 240)
                 }

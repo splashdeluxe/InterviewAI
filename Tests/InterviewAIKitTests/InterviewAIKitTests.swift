@@ -296,3 +296,100 @@ func builtInModes() {
     #expect(url?.absoluteString.hasPrefix("https://github.com/splashdeluxe/InterviewAI/issues/new?") == true)
     #expect(url?.absoluteString.contains("title=It%20broke") == true)
 }
+
+// MARK: - Echo filter (1.5.0)
+
+@Test("Echo filter drops the mic copy of a line the other side just said")
+func echoDropsMicCopy() {
+    let t0 = Date(timeIntervalSince1970: 1_000)
+    let them = TranscriptSegment(channel: "them", text: "What is your salary expectation for this role?", at: t0, isFinal: true)
+    let index = EchoFilter.echoIndex(text: "what is your salary expectation for this role", channel: "me", recent: [them], now: t0.addingTimeInterval(1.5))
+    #expect(index == 0)
+}
+
+@Test("Echo filter finds the earlier mic copy when the real line lands second")
+func echoFindsPromoteCase() {
+    let t0 = Date(timeIntervalSince1970: 2_000)
+    let me = TranscriptSegment(channel: "me", text: "How do you run onboarding for a remote team?", at: t0, isFinal: true)
+    let index = EchoFilter.echoIndex(text: "How do you run onboarding for a remote team?", channel: "them", recent: [me], now: t0.addingTimeInterval(4))
+    #expect(index == 0)
+}
+
+@Test("Echo filter keeps genuine repeats and same-channel lines")
+func echoKeepsGenuine() {
+    let t0 = Date(timeIntervalSince1970: 3_000)
+    let them = TranscriptSegment(channel: "them", text: "How do you run onboarding for a remote team?", at: t0, isFinal: true)
+    // Same words, twelve seconds later: a real repeat, not an echo.
+    #expect(EchoFilter.echoIndex(text: "How do you run onboarding for a remote team?", channel: "me", recent: [them], now: t0.addingTimeInterval(12)) == nil)
+    // Same channel is never an echo.
+    #expect(EchoFilter.echoIndex(text: "How do you run onboarding for a remote team?", channel: "them", recent: [them], now: t0.addingTimeInterval(1)) == nil)
+    // Different words are never an echo.
+    #expect(EchoFilter.echoIndex(text: "Something else entirely was said here.", channel: "me", recent: [them], now: t0.addingTimeInterval(1)) == nil)
+}
+
+@Test("Echo filter gives short back-channels a tight window only")
+func echoShortLineWindow() {
+    let t0 = Date(timeIntervalSince1970: 4_000)
+    let them = TranscriptSegment(channel: "them", text: "Yeah, okay.", at: t0, isFinal: true)
+    #expect(EchoFilter.echoIndex(text: "Yeah okay", channel: "me", recent: [them], now: t0.addingTimeInterval(1)) == 0)
+    #expect(EchoFilter.echoIndex(text: "Yeah okay", channel: "me", recent: [them], now: t0.addingTimeInterval(4)) == nil)
+}
+
+// MARK: - Prompt fit (1.5.0)
+
+@Test("Truncate at word cuts on a boundary and marks the cut")
+func truncateAtWordCuts() {
+    let text = String(repeating: "word ", count: 100)
+    let cut = PromptBuilder.truncateAtWord(text, limit: 120)
+    #expect(cut.count <= 120)
+    #expect(cut.hasSuffix("[Cut here to fit this prompt. The file continues.]"))
+    #expect(!cut.dropLast(60).hasSuffix("wor"))
+    let short = PromptBuilder.truncateAtWord("short text", limit: 120)
+    #expect(short == "short text")
+}
+
+@Test("An oversized pinned file lands in the prompt, cut to fit")
+func oversizedPinnedFileLands() {
+    let big = String(repeating: "onboarding process metric ", count: 3_000)
+    let user = PromptBuilder.userMessage(
+        action: .answer, typedQuestion: nil, customContext: "",
+        documents: [(name: "prep.md", text: big, pinned: true)],
+        transcript: [TranscriptSegment(channel: "them", text: "How do you run onboarding?", isFinal: true)],
+        screenshotNote: false)
+    #expect(user.contains("From prep.md:"))
+    #expect(user.contains("[Cut here to fit this prompt. The file continues.]"))
+    #expect(user.count < PromptBuilder.contextCharBudget + 2_000)
+}
+
+// MARK: - Markdown lite (1.5.0)
+
+@Test("Markdown lite classifies headings, bullets, and paragraphs")
+func markdownLiteClassifies() {
+    let lines = MarkdownLite.lines("## Identity\nName: Nils\n* Led a team\n- Shipped it\n#### Details\n\n---\nPlain line.")
+    #expect(lines.map(\.kind) == [.heading, .paragraph, .bullet, .bullet, .heading, .paragraph])
+    #expect(lines[0].text == "Identity")
+    #expect(lines[2].text == "Led a team")
+    #expect(lines[5].text == "Plain line.")
+}
+
+@Test("Echo filter catches a line the other channel cut into pieces")
+func echoCatchesSplitChunks() {
+    let t0 = Date(timeIntervalSince1970: 5_000)
+    let chunk = TranscriptSegment(channel: "them", text: "What is your salary?", at: t0, isFinal: true)
+    let whole = "What is your salary expectation for this role?"
+    #expect(EchoFilter.echoIndex(text: whole, channel: "me", recent: [chunk], now: t0.addingTimeInterval(2)) == 0)
+}
+
+@Test("Echo filter keeps a similar but different question")
+func echoKeepsSimilarQuestion() {
+    let t0 = Date(timeIntervalSince1970: 6_000)
+    let them = TranscriptSegment(channel: "them", text: "What is your salary expectation for this role?", at: t0, isFinal: true)
+    #expect(EchoFilter.echoIndex(text: "What is your current salary at your company?", channel: "me", recent: [them], now: t0.addingTimeInterval(2)) == nil)
+}
+
+@Test("Echo filter catches the same line worded one word apart")
+func echoCatchesOneWordDifference() {
+    let t0 = Date(timeIntervalSince1970: 7_000)
+    let them = TranscriptSegment(channel: "them", text: "What is your salary expect?", at: t0, isFinal: true)
+    #expect(EchoFilter.echoIndex(text: "What is your salary expectation?", channel: "me", recent: [them], now: t0.addingTimeInterval(2)) == 0)
+}

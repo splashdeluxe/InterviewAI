@@ -135,3 +135,69 @@ public enum AutoAnswerGate {
         return words.count >= 10
     }
 }
+
+/// On speakers, the microphone hears the speakers: every line from the
+/// other side lands twice, once as "them" (the direct system audio) and
+/// once as "me" (the acoustic echo). This finds that second copy so the
+/// session can drop it. The match is on the words alone, ignoring case
+/// and punctuation. Long lines count as echoes within six seconds;
+/// short ones ("Yeah, okay.") only within two, so two people genuinely
+/// agreeing a beat later both stay in the transcript. The two channels
+/// also cut speech at different points, so a line that is nearly all
+/// contained in a recent opposite-channel line counts too.
+public enum EchoFilter {
+    public static func normalize(_ text: String) -> String {
+        text.lowercased().split { !$0.isLetter && !$0.isNumber }.joined(separator: " ")
+    }
+
+    /// Index into `recent` of the opposite-channel final this line
+    /// merely echoes, or nil when the line is genuinely new.
+    public static func echoIndex(text: String, channel: String, recent: [TranscriptSegment], now: Date = Date()) -> Int? {
+        let mine = normalize(text)
+        guard !mine.isEmpty else { return nil }
+        let myWords = mine.split(separator: " ").map(String.init)
+        let window: TimeInterval = myWords.count >= 3 ? 6 : 2
+        return recent.lastIndex { other in
+            guard other.channel != channel, other.isFinal,
+                  abs(now.timeIntervalSince(other.at)) <= window else { return false }
+            let theirs = normalize(other.text)
+            if theirs == mine { return true }
+            let theirWords = theirs.split(separator: " ").map(String.init)
+            guard myWords.count >= 4, theirWords.count >= 4 else { return false }
+            let overlap = Set(myWords).intersection(Set(theirWords)).count
+            return Double(overlap) / Double(min(myWords.count, theirWords.count)) >= 0.75
+        }
+    }
+}
+
+/// Generated documents (profile, company intel, summaries) come back
+/// from the model as markdown. This splits one into display lines with
+/// the marks classified, so the app can show a heading as a heading
+/// instead of showing the raw ## characters. Inline **bold** stays in
+/// the text for the view to render.
+public enum MarkdownLite {
+    public struct Line: Equatable, Sendable {
+        public enum Kind: Equatable, Sendable { case heading, bullet, paragraph }
+        public let kind: Kind
+        public let text: String
+        public init(kind: Kind, text: String) {
+            self.kind = kind
+            self.text = text
+        }
+    }
+
+    public static func lines(_ raw: String) -> [Line] {
+        raw.components(separatedBy: "\n").compactMap { rawLine in
+            let line = rawLine.trimmingCharacters(in: .whitespaces)
+            if line.isEmpty || line == "---" || line == "***" { return nil }
+            if line.hasPrefix("#") {
+                let text = line.drop(while: { $0 == "#" }).trimmingCharacters(in: .whitespaces)
+                return text.isEmpty ? nil : Line(kind: .heading, text: text)
+            }
+            if line.hasPrefix("* ") || line.hasPrefix("- ") || line.hasPrefix("• ") {
+                return Line(kind: .bullet, text: String(line.dropFirst(2)).trimmingCharacters(in: .whitespaces))
+            }
+            return Line(kind: .paragraph, text: line)
+        }
+    }
+}

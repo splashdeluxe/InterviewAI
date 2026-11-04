@@ -1,8 +1,9 @@
 import Foundation
 
 /// Keyword ranking and prompt building. Plain, local, and explainable:
-/// no embeddings, no server. Pinned files always go in whole. Other files
-/// are scored against the question by shared words and cut to a budget.
+/// no embeddings, no server. Pinned files go in first. Other files are
+/// scored against the question by shared words. The whole context is
+/// cut to a character budget, at word boundaries.
 public enum ContextRanker {
     public static func words(_ text: String) -> Set<String> {
         Set(text.lowercased().split { !$0.isLetter && !$0.isNumber }.map(String.init).filter { $0.count > 2 })
@@ -53,9 +54,18 @@ public enum PromptBuilder {
         var used = contextBlocks.joined().count
         for doc in ContextRanker.rank(documents: documents, query: question) {
             let block = "From \(doc.name):\n\(doc.text)"
-            if used + block.count > contextCharBudget { continue }
-            used += block.count
-            contextBlocks.append(block)
+            let remaining = contextCharBudget - used
+            if block.count <= remaining {
+                used += block.count
+                contextBlocks.append(block)
+            } else if remaining >= 400 {
+                // A file too big for what is left still lands, cut at a
+                // word boundary. The old behaviour skipped it whole, so
+                // a large pinned file silently never reached the model.
+                let cut = truncateAtWord(block, limit: remaining)
+                used += cut.count
+                contextBlocks.append(cut)
+            }
         }
         if !contextBlocks.isEmpty {
             parts.append("Context:\n" + contextBlocks.joined(separator: "\n\n"))
@@ -80,6 +90,21 @@ public enum PromptBuilder {
         }
         parts.append(task)
         return parts.joined(separator: "\n\n")
+    }
+
+    /// Cut a block to at most `limit` characters, ending at a word
+    /// boundary, with a short marker so the model knows the file
+    /// continues beyond what it can see.
+    public static func truncateAtWord(_ text: String, limit: Int) -> String {
+        guard text.count > limit else { return text }
+        let marker = "\n[Cut here to fit this prompt. The file continues.]"
+        let keep = limit - marker.count
+        guard keep > 0 else { return String(text.prefix(limit)) }
+        var slice = String(text.prefix(keep))
+        if let lastSpace = slice.lastIndex(of: " ") {
+            slice = String(slice[..<lastSpace])
+        }
+        return slice + marker
     }
 
     /// The end-of-meeting summary request. Written as plain directions,

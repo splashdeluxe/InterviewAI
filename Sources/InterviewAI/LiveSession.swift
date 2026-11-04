@@ -104,6 +104,18 @@ final class LiveSession {
             partials[channel] = nil
             let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty else { return }
+            // On speakers the mic hears the other side too, so their
+            // lines land twice. Drop the echo copy. If the mic copy
+            // landed first and the real system-audio line arrives now,
+            // promote the earlier copy to "them" instead, so Auto
+            // Answer still fires on it.
+            if let echoIndex = EchoFilter.echoIndex(text: trimmed, channel: channel, recent: finalSegments) {
+                if channel == "them" {
+                    finalSegments[echoIndex].channel = "them"
+                    if autoAnswer, isListening { scheduleAutoAnswer() }
+                }
+                return
+            }
             var segment = TranscriptSegment(channel: channel, text: trimmed, isFinal: true)
             if let seconds, let startedAt {
                 segment.duration = seconds

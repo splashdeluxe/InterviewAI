@@ -86,6 +86,7 @@ final class OverlayController {
 struct OverlayView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @AppStorage("reading.transcriptFontSize") private var transcriptFontSize = 13.0
     @State private var askText = ""
 
     var body: some View {
@@ -159,7 +160,7 @@ struct OverlayView: View {
     private var transcriptList: some View {
         AutoScrollTranscript(
             segments: model.session.displaySegments,
-            font: .callout,
+            font: .system(size: transcriptFontSize),
             spacing: Space.xs,
             emptyText: "Nothing heard yet. Start listening, then speak or let the other side speak."
         )

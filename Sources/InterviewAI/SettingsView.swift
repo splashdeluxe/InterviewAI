@@ -78,6 +78,7 @@ struct GeneralSettings: View {
     @AppStorage("overlay.opacity") private var overlayOpacity = 1.0
     @AppStorage("reading.highlightKeywords") private var highlightKeywords = true
     @AppStorage("reading.answerFontSize") private var answerFontSize = 18.0
+    @AppStorage("reading.transcriptFontSize") private var transcriptFontSize = 13.0
     @AppStorage("general.showInDock") private var showInDock = true
 
     var body: some View {
@@ -123,13 +124,23 @@ struct GeneralSettings: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
             HStack {
-                Text("Font Size")
+                Text("Answer Font Size")
                 Slider(value: $answerFontSize, in: 14...24, step: 1)
                 Text("\(Int(answerFontSize)) pt")
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
             }
             Text("The size of the answer text, on the Live page and in the overlay.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            HStack {
+                Text("Transcript Font Size")
+                Slider(value: $transcriptFontSize, in: 11...18, step: 1)
+                Text("\(Int(transcriptFontSize)) pt")
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
+            Text("The size of the conversation text, on the Live page, in the overlay, and in saved meetings.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
