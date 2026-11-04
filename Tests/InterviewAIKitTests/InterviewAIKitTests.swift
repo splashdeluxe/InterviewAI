@@ -19,6 +19,30 @@ func rankerPinned() {
     #expect(ranked.map(\.name) == ["resume.md", "notes.md"])
 }
 
+@Test("Auto answer gate skips back-channels and answers real questions")
+func autoAnswerGate() {
+    #expect(!AutoAnswerGate.shouldAnswer("Yeah."))
+    #expect(!AutoAnswerGate.shouldAnswer("Okay."))
+    #expect(!AutoAnswerGate.shouldAnswer("Right, right."))
+    #expect(!AutoAnswerGate.shouldAnswer("Mm-hm, sure."))
+    #expect(AutoAnswerGate.shouldAnswer("What is your salary expectation?"))
+    #expect(AutoAnswerGate.shouldAnswer("Tell me about a People Operations team you built."))
+    #expect(AutoAnswerGate.shouldAnswer("How would you handle onboarding for a remote team"))
+    #expect(AutoAnswerGate.shouldAnswer("We are looking for someone who has run payroll across three countries before."))
+    #expect(!AutoAnswerGate.shouldAnswer("So, yeah, anyway."))
+}
+
+@Test("Prompt restates the other side's last line at the instruction")
+func promptRestatesQuestion() {
+    let segments = [
+        TranscriptSegment(channel: "them", text: "What is your salary expectation?", isFinal: true),
+    ]
+    let user = PromptBuilder.userMessage(
+        action: .answer, typedQuestion: nil, customContext: "",
+        documents: [], transcript: segments, screenshotNote: false)
+    #expect(user.contains("The other side just said: \"What is your salary expectation?\""))
+}
+
 @Test("Prompt carries mode rules, pinned context, transcript, and the action")
 func promptBuilds() {
     let segments = [

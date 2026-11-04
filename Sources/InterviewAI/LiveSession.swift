@@ -182,14 +182,23 @@ final class LiveSession {
         }
     }
 
-    /// When the other side's line settles, answer it after a short pause.
-    /// A new line cancels the pending answer, so only the last question
-    /// of a run is answered.
+    /// When the other side's line settles, answer it after a short
+    /// pause, when the line earns an answer (see AutoAnswerGate).
+    /// A new line cancels the pending answer, so only the last
+    /// question of a run is answered. If an answer is still streaming
+    /// when the pause ends, wait once for it instead of dropping the
+    /// question silently, which read as "auto answer does nothing".
     private func scheduleAutoAnswer() {
+        guard let last = finalSegments.last(where: { $0.channel == "them" }),
+              AutoAnswerGate.shouldAnswer(last.text) else { return }
         settleTask?.cancel()
         settleTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(1.2))
-            guard !Task.isCancelled, let self, isListening, !isAnswering else { return }
+            guard !Task.isCancelled, let self, isListening else { return }
+            if isAnswering {
+                try? await Task.sleep(for: .seconds(2.5))
+                guard !Task.isCancelled, isListening, !isAnswering else { return }
+            }
             runAction(.answer, typedQuestion: nil)
         }
     }

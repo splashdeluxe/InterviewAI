@@ -69,6 +69,11 @@ public enum PromptBuilder {
         var task = action?.instruction ?? "Answer the last question from the other side."
         if let typedQuestion, !typedQuestion.isEmpty {
             task += "\n\nMy question: \(typedQuestion)"
+        } else if action != nil, !question.isEmpty {
+            // Restate the target line right at the instruction. A
+            // small model answers the line it was just shown far more
+            // reliably than one it must dig out of the transcript.
+            task += "\n\nThe other side just said: \"\(question)\""
         }
         if screenshotNote {
             task += "\n\nA screenshot of my screen is attached. Use what it shows."

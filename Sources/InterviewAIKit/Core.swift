@@ -110,3 +110,28 @@ public enum AnswerAction: String, CaseIterable, Sendable {
         return all[number - 1]
     }
 }
+
+/// Whether a settled line from the other side deserves an automatic
+/// answer. Back-channels ("Yeah.", "Okay.") and fragments do not: the
+/// old behaviour answered every line, which wasted the model on noise
+/// and could keep it generating for hours in an empty room. A line
+/// earns an answer when it asks something, or when it is long enough
+/// to be a real prompt. Deliberately predictable, no learning.
+public enum AutoAnswerGate {
+    private static let questionStarters = [
+        "what", "how", "why", "when", "where", "who", "which",
+        "can you", "could you", "would you", "do you", "did you",
+        "have you", "are you", "tell me", "describe", "walk me",
+        "explain", "give me an example",
+    ]
+
+    public static func shouldAnswer(_ line: String) -> Bool {
+        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        let words = trimmed.split { !$0.isLetter && !$0.isNumber }
+        guard words.count >= 3 else { return false }
+        if trimmed.hasSuffix("?") { return true }
+        let lowered = trimmed.lowercased()
+        if questionStarters.contains(where: { lowered.contains($0) }) { return true }
+        return words.count >= 10
+    }
+}

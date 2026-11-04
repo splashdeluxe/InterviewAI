@@ -121,7 +121,20 @@ public enum Brain {
             }
         }
 
-        let body: [String: Any] = ["model": config.model, "stream": true, "messages": messages]
+        // Generation options matter as much as the model. Without a
+        // num_ctx, Ollama silently truncates the prompt to its 2048
+        // token default, and the system prompt plus most of the
+        // context never reach the model: answers come out ungrounded
+        // and generic. A low temperature keeps answers factual, and a
+        // predict cap keeps them speakable instead of rambling.
+        var body: [String: Any] = ["model": config.model, "stream": true, "messages": messages]
+        switch config.kind {
+        case .ollama:
+            body["options"] = ["temperature": 0.3, "num_ctx": 8192, "num_predict": 400]
+        case .openAICompatible:
+            body["temperature"] = 0.3
+            body["max_tokens"] = 400
+        }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
