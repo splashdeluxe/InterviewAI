@@ -15,8 +15,17 @@ final class Meeting {
     var notes: String = ""
     var summary: String = ""
     var followUp: String = ""
-    /// Calendar event identifier when the session started from an event.
+    /// Calendar event identifier when the session was matched to an
+    /// event, whether it was started from it or found by its time.
     var eventID: String = ""
+    /// The people invited to the calendar event, comma-joined.
+    var attendees: String = ""
+    var calendarName: String = ""
+    var eventLocation: String = ""
+    /// The event's own notes or description, plus its URL when it has one.
+    var eventDetails: String = ""
+    var eventStart: Date?
+    var eventEnd: Date?
     var uuid: UUID = UUID()
 
     init(title: String, modeID: String, modeName: String) {
@@ -291,20 +300,36 @@ final class AppModel {
     @discardableResult
     func saveMeeting(from session: LiveSession) -> Meeting {
         let mode = activeMode()
+        let started = session.startedAt ?? Date.now
+        // The calendar event names the meeting and brings its people,
+        // whether the session was started from the event or just ran
+        // while the event was on. Without a match the meeting keeps
+        // the composed mode-and-time title.
+        let event = session.linkedEvent ?? CalendarService.event(
+            overlappingSessionStart: started,
+            end: started.addingTimeInterval(session.duration)
+        )
         let meeting = Meeting(
-            title: session.meetingTitle,
+            title: event?.title ?? session.meetingTitle,
             modeID: mode.definition.id,
             modeName: mode.definition.name
         )
-        meeting.startedAt = session.startedAt ?? Date.now
+        meeting.startedAt = started
         meeting.durationSeconds = session.duration
         meeting.transcriptJSON = TranscriptSegment.encode(session.finalSegments)
         meeting.notes = session.notes
-        if let event = session.linkedEvent {
+        if let event {
             meeting.eventID = event.id
-            if meeting.notes.isEmpty, !event.attendees.isEmpty {
-                meeting.notes = "Attendees: " + event.attendees.joined(separator: ", ")
+            meeting.attendees = event.attendees.joined(separator: ", ")
+            meeting.calendarName = event.calendarName
+            meeting.eventLocation = event.location
+            var details = event.details
+            if !event.url.isEmpty {
+                details = details.isEmpty ? event.url : details + "\n" + event.url
             }
+            meeting.eventDetails = details
+            meeting.eventStart = event.start
+            meeting.eventEnd = event.end
         }
         container.mainContext.insert(meeting)
         try? container.mainContext.save()

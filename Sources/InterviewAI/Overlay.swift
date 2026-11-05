@@ -40,8 +40,9 @@ final class OverlayController {
             panel.isOpaque = false
             panel.backgroundColor = .clear
             panel.hasShadow = true
+            panel.isMovable = true
             panel.isMovableByWindowBackground = true
-            let host = NSHostingView(rootView: OverlayView().environment(model))
+            let host = MovableHostingView(rootView: AnyView(OverlayView().environment(model)))
             panel.contentView = host
             if let screen = NSScreen.main {
                 let frame = screen.visibleFrame
@@ -59,6 +60,26 @@ final class OverlayController {
     func hide() {
         panel?.orderOut(nil)
         isShown = false
+    }
+
+    /// Grip dragging: the header grip records where the panel stood
+    /// when the drag began, then follows the pointer. Screen space is
+    /// y-up, SwiftUI drag space is y-down, so the y flips.
+    @ObservationIgnored private var dragOrigin: NSPoint?
+
+    var dragStarted: Bool { dragOrigin != nil }
+
+    func beginDrag() {
+        dragOrigin = panel?.frame.origin
+    }
+
+    func drag(translation: CGSize) {
+        guard let panel, let dragOrigin else { return }
+        panel.setFrameOrigin(NSPoint(x: dragOrigin.x + translation.width, y: dragOrigin.y - translation.height))
+    }
+
+    func endDrag() {
+        dragOrigin = nil
     }
 
     /// Collapse to the header bar, or back to the remembered height.
@@ -82,11 +103,20 @@ final class OverlayController {
     }
 }
 
+/// The hosting view for the overlay panel. A plain NSHostingView
+/// reports that a mouse-down cannot move its window, which silently
+/// defeats the panel's movable-by-background setting: the overlay
+/// looked draggable and was not. This one says yes, so dragging any
+/// free surface of the panel moves it.
+final class MovableHostingView: NSHostingView<AnyView> {
+    override var mouseDownCanMoveWindow: Bool { true }
+}
+
 /// The overlay content: transcript left, answer right, action row, ask box.
 struct OverlayView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @AppStorage("reading.transcriptFontSize") private var transcriptFontSize = 13.0
+    @AppStorage("reading.transcriptFontSize") private var transcriptFontSize = 14.0
     @State private var askText = ""
 
     var body: some View {
@@ -94,6 +124,18 @@ struct OverlayView: View {
         let collapsed = model.overlay.isCollapsed
         VStack(spacing: Space.sm) {
             HStack(spacing: Space.sm) {
+                Image(systemName: "line.3.horizontal")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+                    .help("Drag to move the overlay")
+                    .gesture(
+                        DragGesture(coordinateSpace: .global)
+                            .onChanged { value in
+                                if model.overlay.dragStarted == false { model.overlay.beginDrag() }
+                                model.overlay.drag(translation: value.translation)
+                            }
+                            .onEnded { _ in model.overlay.endDrag() }
+                    )
                 StatusDot(listening: session.isListening)
                 Text(session.status)
                     .font(.caption)
@@ -160,8 +202,7 @@ struct OverlayView: View {
     private var transcriptList: some View {
         AutoScrollTranscript(
             segments: model.session.displaySegments,
-            font: .system(size: transcriptFontSize),
-            spacing: Space.xs,
+            fontSize: transcriptFontSize,
             emptyText: "Nothing heard yet. Start listening, then speak or let the other side speak."
         )
     }

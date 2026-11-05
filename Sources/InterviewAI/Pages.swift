@@ -52,8 +52,28 @@ struct LivePage: View {
 
             HSplitView {
                 VStack(alignment: .leading, spacing: Space.sm) {
-                    Text("Transcript")
-                        .font(.headline)
+                    HStack(spacing: Space.sm) {
+                        Text("Transcript")
+                            .font(.headline)
+                        Spacer()
+                        Button("Copy Transcript", systemImage: "doc.on.doc") {
+                            copyText(TranscriptSegment.plainText(session.finalSegments))
+                        }
+                        .labelStyle(.iconOnly)
+                        .buttonStyle(QuietButtonStyle())
+                        .disabled(session.finalSegments.isEmpty)
+                        .help("Copy the whole transcript")
+                        Button("Export Transcript", systemImage: "square.and.arrow.up") {
+                            saveTextFile(
+                                TranscriptExport.markdown(title: session.meetingTitle, date: session.startedAt ?? Date.now, attendees: session.linkedEvent?.attendees ?? [], location: session.linkedEvent?.location ?? "", segments: session.finalSegments, summary: ""),
+                                fileName: TranscriptExport.fileName(title: session.meetingTitle, date: session.startedAt ?? Date.now)
+                            )
+                        }
+                        .labelStyle(.iconOnly)
+                        .buttonStyle(QuietButtonStyle())
+                        .disabled(session.finalSegments.isEmpty)
+                        .help("Export the transcript as a markdown file")
+                    }
                     OverlayTranscriptList()
                 }
                 .padding(Space.md)
@@ -280,23 +300,60 @@ struct DocTextView: View {
     }
 }
 
+/// The whole transcript as ONE selectable text. Each line used to be
+/// its own Text view, so a selection could never span more than one
+/// line and copying a passage meant copying line by line. As a single
+/// attributed string the reader can mark any stretch, across speakers,
+/// and copy it in one go.
+struct TranscriptBlock: View {
+    let segments: [TranscriptSegment]
+    var fontSize: CGFloat = 14
+
+    var body: some View {
+        Text(Self.attributed(segments: segments, fontSize: fontSize))
+            .textSelection(.enabled)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    static func attributed(segments: [TranscriptSegment], fontSize: CGFloat) -> AttributedString {
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.lineSpacing = 3
+        paragraph.paragraphSpacing = 7
+        let result = NSMutableAttributedString()
+        for (index, segment) in segments.enumerated() {
+            if index > 0 { result.append(NSAttributedString(string: "\n")) }
+            let nameColor: NSColor = segment.channel == "me" ? .controlAccentColor : .secondaryLabelColor
+            let name = NSAttributedString(string: "\(segment.speakerName): ", attributes: [
+                .font: NSFont.systemFont(ofSize: fontSize, weight: .semibold),
+                .foregroundColor: nameColor,
+                .paragraphStyle: paragraph,
+            ])
+            let bodyColor: NSColor = segment.isFinal ? .labelColor : .secondaryLabelColor
+            let body = NSAttributedString(string: segment.displayText, attributes: [
+                .font: NSFont.systemFont(ofSize: fontSize),
+                .foregroundColor: bodyColor,
+                .paragraphStyle: paragraph,
+            ])
+            result.append(name)
+            result.append(body)
+        }
+        return AttributedString(result)
+    }
+}
+
 /// A transcript that runs downward and follows the newest line as it
 /// lands, so the latest words are always readable, and stays scrollable:
 /// scroll up and it leaves you reading until you come back to the bottom.
 struct AutoScrollTranscript: View {
     let segments: [TranscriptSegment]
-    var font: Font = .body
-    var spacing: CGFloat = Space.sm
+    var fontSize: CGFloat = 14
     var emptyText: String? = nil
     @State private var atBottom = true
 
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: spacing) {
-                    ForEach(segments) { segment in
-                        TranscriptRow(segment: segment, font: font)
-                    }
+                VStack(alignment: .leading, spacing: Space.sm) {
                     if segments.isEmpty {
                         if let emptyText {
                             Text(emptyText)
@@ -309,6 +366,8 @@ struct AutoScrollTranscript: View {
                                 description: Text("Start listening. Both sides of the call will appear here, transcribed on this Mac.")
                             )
                         }
+                    } else {
+                        TranscriptBlock(segments: segments, fontSize: fontSize)
                     }
                     Color.clear
                         .frame(height: 1)
@@ -332,13 +391,29 @@ struct AutoScrollTranscript: View {
     }
 }
 
+/// Write text to a file the user picks, for the transcript exports.
+func saveTextFile(_ content: String, fileName: String) {
+    let panel = NSSavePanel()
+    panel.nameFieldStringValue = fileName
+    panel.allowedContentTypes = [UTType(filenameExtension: "md") ?? .plainText]
+    if panel.runModal() == .OK, let url = panel.url {
+        try? content.write(to: url, atomically: true, encoding: .utf8)
+    }
+}
+
+/// Copy text to the pasteboard, replacing what was there.
+func copyText(_ text: String) {
+    NSPasteboard.general.clearContents()
+    NSPasteboard.general.setString(text, forType: .string)
+}
+
 /// Transcript lines, shared shape with the overlay.
 struct OverlayTranscriptList: View {
     @Environment(AppModel.self) private var model
-    @AppStorage("reading.transcriptFontSize") private var transcriptFontSize = 13.0
+    @AppStorage("reading.transcriptFontSize") private var transcriptFontSize = 14.0
 
     var body: some View {
-        AutoScrollTranscript(segments: model.session.displaySegments, font: .system(size: transcriptFontSize))
+        AutoScrollTranscript(segments: model.session.displaySegments, fontSize: transcriptFontSize)
     }
 }
 
@@ -350,7 +425,7 @@ struct MeetingsPage: View {
     @Query(sort: \Meeting.startedAt, order: .reverse) private var meetings: [Meeting]
     @State private var search = ""
     @State private var tab = "Transcript"
-    @AppStorage("reading.transcriptFontSize") private var transcriptFontSize = 13.0
+    @AppStorage("reading.transcriptFontSize") private var transcriptFontSize = 14.0
 
     /// List rows are narrow: a composed title ("General · Nov 4, 2026
     /// at 9:19 PM") truncates before the time shows. Rows carry mode
@@ -408,25 +483,71 @@ struct MeetingsPage: View {
     @ViewBuilder
     private var detail: some View {
         if let meeting = meetings.first(where: { $0.id == model.selectedMeeting }) {
+            // Meeting information saved with the meeting (1.6.0 on).
+            // Older saves only kept the event id, so fall back to a
+            // live lookup for those.
+            let liveEvent = meeting.eventID.isEmpty ? nil : CalendarService.event(id: meeting.eventID)
+            let attendeeList = meeting.attendees.isEmpty ? (liveEvent?.attendees ?? []) : meeting.attendees.components(separatedBy: ", ")
+            let calendarLabel = meeting.calendarName.isEmpty ? (liveEvent?.calendarName ?? "") : meeting.calendarName
+            let locationLabel = meeting.eventLocation.isEmpty ? (liveEvent?.location ?? "") : meeting.eventLocation
+            let detailsText = meeting.eventDetails.isEmpty ? (liveEvent?.details ?? "") : meeting.eventDetails
+            let whenStart = meeting.eventStart ?? liveEvent?.start
+            let whenEnd = meeting.eventEnd ?? liveEvent?.end
             VStack(alignment: .leading, spacing: Space.md) {
-                HStack {
+                HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: Space.xs) {
                         Text(meeting.title).font(.title3.weight(.semibold))
                         Text("\(meeting.modeName) · \(Int(meeting.durationSeconds / 60)) min")
                             .font(.callout)
                             .foregroundStyle(.secondary)
-                        if let event = CalendarService.event(id: meeting.eventID) {
-                            Label("Calendar: \(event.calendarName)", systemImage: "calendar.badge.checkmark")
+                        if !calendarLabel.isEmpty {
+                            Label("Calendar: \(calendarLabel)", systemImage: "calendar.badge.checkmark")
                                 .font(.callout)
                                 .foregroundStyle(.secondary)
                         }
+                        if let whenStart, let whenEnd {
+                            Label("\(whenStart.formatted(date: .abbreviated, time: .shortened)) – \(whenEnd.formatted(date: .omitted, time: .shortened))", systemImage: "clock")
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                        }
+                        if !attendeeList.isEmpty {
+                            Label("Invited: \(attendeeList.joined(separator: ", "))", systemImage: "person.2")
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                                .textSelection(.enabled)
+                        }
+                        if !locationLabel.isEmpty {
+                            Label(locationLabel, systemImage: "mappin.and.ellipse")
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                                .textSelection(.enabled)
+                        }
+                        if !detailsText.isEmpty {
+                            Text(detailsText)
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(4)
+                                .textSelection(.enabled)
+                        }
                     }
                     Spacer()
-                    Button("Copy Summary") {
-                        NSPasteboard.general.clearContents()
-                        NSPasteboard.general.setString(meeting.summary, forType: .string)
+                    VStack(alignment: .trailing, spacing: Space.xs) {
+                        Button("Copy Summary") {
+                            copyText(meeting.summary)
+                        }
+                        .disabled(meeting.summary.isEmpty)
+                        Button("Copy Transcript") {
+                            copyText(TranscriptSegment.plainText(meeting.segments))
+                        }
+                        .disabled(meeting.segments.isEmpty)
+                        Button("Export…") {
+                            saveTextFile(
+                                TranscriptExport.markdown(title: meeting.title, date: meeting.startedAt, attendees: attendeeList, location: locationLabel, segments: meeting.segments, summary: meeting.summary),
+                                fileName: TranscriptExport.fileName(title: meeting.title, date: meeting.startedAt)
+                            )
+                        }
+                        .disabled(meeting.segments.isEmpty)
                     }
-                    .disabled(meeting.summary.isEmpty)
                 }
                 Picker("View", selection: $tab) {
                     Text("Transcript").tag("Transcript")
@@ -457,11 +578,7 @@ struct MeetingsPage: View {
                     }
                 default:
                     ScrollView {
-                        LazyVStack(alignment: .leading, spacing: Space.sm) {
-                            ForEach(meeting.segments) { segment in
-                                TranscriptRow(segment: segment, font: .system(size: transcriptFontSize))
-                            }
-                        }
+                        TranscriptBlock(segments: meeting.segments, fontSize: transcriptFontSize)
                     }
                 }
             }

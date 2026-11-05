@@ -107,16 +107,37 @@ public enum PromptBuilder {
         return slice + marker
     }
 
-    /// The end-of-meeting summary request. Written as plain directions,
-    /// not a labelled template: a small local model echoes a template's
-    /// labels back as its answer (see SummaryCleaner).
-    public static func summaryMessage(transcript: [TranscriptSegment], notes: String) -> String {
+    /// The end-of-meeting summary request. The shape is markdown with
+    /// real headings: the Summary tab renders them (DocTextView), and
+    /// a concrete structure is what makes the notes worth reading. The
+    /// old request forbade headings and capped the whole thing at a
+    /// few lines, which produced a thin paragraph that said nothing.
+    /// SummaryCleaner strips an echoed scaffold if the model parrots
+    /// the instructions instead of following them.
+    public static func summaryMessage(transcript: [TranscriptSegment], notes: String, title: String = "", attendees: [String] = []) -> String {
         """
-        Write the summary of this meeting, from the transcript and my notes below.
+        Write the meeting notes for "\(title.isEmpty ? "this meeting" : title)" from the transcript and my notes below.\(attendees.isEmpty ? "" : " The people invited were: \(attendees.joined(separator: ", ")).")
 
-        Write only the summary itself. Start directly with the summary text. No title, no headings, no labels, and do not repeat any part of these instructions.
+        Use only facts from the transcript and my notes. Keep every name, number, date, and figure exactly as said. Never invent a decision, a deadline, or an owner. If something was discussed but not settled, it belongs under Open questions, not Decisions.
 
-        Cover, in this order: what was discussed, in three to five lines; then the decisions, as a short bullet list; then the action items with owners where named, as a short bullet list. If there were no decisions or no action items, leave that part out.
+        Write the notes in markdown, with exactly these sections, in this order:
+
+        ## Overview
+        What the meeting was about and how it ended, in three to five full sentences. Name the topics and the outcome, not just that a discussion happened.
+
+        ## Key points
+        The concrete facts worth remembering: up to seven bullets, one fact per bullet, with the figures and names as said. Skip small talk.
+
+        ## Decisions
+        Only decisions actually made, one bullet each. Leave this section out entirely if nothing was decided.
+
+        ## Action items
+        One bullet per task, written as: task, owner in brackets if a person was named, deadline if one was named. Leave this section out entirely if there are no tasks.
+
+        ## Open questions
+        Anything raised and left unanswered or undecided, one bullet each. Leave this section out entirely if there are none.
+
+        Write only the notes. Start directly with "## Overview". Do not repeat any part of these instructions.
 
         Then write a line with only ===, and after it a short follow-up message I can send, in my voice, thanking them and restating the next step.
 
@@ -144,7 +165,10 @@ public enum SummaryCleaner {
         var lines = raw.components(separatedBy: "\n")
         while let first = lines.first {
             let trimmed = first.trimmingCharacters(in: .whitespaces)
-            if trimmed.isEmpty || trimmed.hasPrefix("#") || isScaffoldLine(trimmed) {
+            // Markdown headings are content now: the notes are written
+            // with ## sections and the Summary tab renders them. Only
+            // blank lead lines and echoed scaffold go.
+            if trimmed.isEmpty || isScaffoldLine(trimmed) {
                 lines.removeFirst()
             } else {
                 break
@@ -160,11 +184,14 @@ public enum SummaryCleaner {
     }
 
     /// A line made only of scaffolding labels and punctuation, like
-    /// "Shape:" or "Summary: Summary: Decision: Action item:".
+    /// "Shape:" or "Summary: Summary: Decision: Action item:". Leading
+    /// markdown marks are ignored, so "### Shape:" counts too, while a
+    /// real heading like "## Overview" does not.
     static func isScaffoldLine(_ line: String) -> Bool {
-        var rest = line.lowercased()
+        var rest = String(line.lowercased().drop(while: { $0 == "#" || $0 == " " }))
         for label in labels { rest = rest.replacingOccurrences(of: label, with: " ") }
         rest = rest.replacingOccurrences(of: ":", with: " ")
+        rest = rest.replacingOccurrences(of: "-", with: " ")
         return rest.trimmingCharacters(in: .whitespaces).isEmpty
     }
 }

@@ -8,7 +8,7 @@ import InterviewAIKit
 struct AnswerTextView: View {
     let text: String
     @AppStorage("reading.highlightKeywords") private var highlightKeywords = true
-    @AppStorage("reading.answerFontSize") private var answerFontSize = 18.0
+    @AppStorage("reading.answerFontSize") private var answerFontSize = 14.0
 
     var body: some View {
         Text(rendered)

@@ -263,8 +263,26 @@ func builtInModes() {
 
 @Test func summaryPromptHasNoLabelsToEcho() {
     let message = PromptBuilder.summaryMessage(transcript: [], notes: "")
-    #expect(message.contains("Write only the summary itself"))
+    #expect(message.contains("Write only the notes"))
     #expect(!message.contains("Shape:"))
+}
+
+@Test func summaryPromptCarriesStructureAndPeople() {
+    let message = PromptBuilder.summaryMessage(
+        transcript: [TranscriptSegment(channel: "them", text: "What is your salary expectation?", isFinal: true)],
+        notes: "", title: "KNIME Interview", attendees: ["Christian Birkhold", "Nils Effmert"])
+    #expect(message.contains("## Overview"))
+    #expect(message.contains("## Key points"))
+    #expect(message.contains("## Action items"))
+    #expect(message.contains("KNIME Interview"))
+    #expect(message.contains("Christian Birkhold"))
+}
+
+@Test func summaryCleanerKeepsMarkdownHeadings() {
+    let notes = "## Overview\nWe discussed the role.\n\n## Decisions\n- Start in January"
+    #expect(SummaryCleaner.clean(notes) == notes)
+    // An echoed scaffold lead still goes, heading or not.
+    #expect(SummaryCleaner.clean("### Shape:\n## Overview\nWe discussed the role.") == "## Overview\nWe discussed the role.")
 }
 
 @Test func answerHighlightMarksBoldAndFigures() {
@@ -392,4 +410,60 @@ func echoCatchesOneWordDifference() {
     let t0 = Date(timeIntervalSince1970: 7_000)
     let them = TranscriptSegment(channel: "them", text: "What is your salary expect?", at: t0, isFinal: true)
     #expect(EchoFilter.echoIndex(text: "What is your salary expectation?", channel: "me", recent: [them], now: t0.addingTimeInterval(2)) == 0)
+}
+
+@Test func eventMatcherPicksTheOverlappingEvent() {
+    let base = Date(timeIntervalSince1970: 100_000)
+    func event(_ title: String, _ startOffset: TimeInterval, _ endOffset: TimeInterval) -> UpcomingEvent {
+        UpcomingEvent(id: title, title: title, start: base.addingTimeInterval(startOffset), end: base.addingTimeInterval(endOffset), attendees: [], calendarName: "Work")
+    }
+    let standup = event("Standup", -3600, -1800)
+    let interview = event("KNIME Interview", 600, 2400)
+    let picked = EventMatcher.pick(events: [standup, interview], sessionStart: base, sessionEnd: base.addingTimeInterval(1800))
+    #expect(picked?.title == "KNIME Interview")
+}
+
+@Test func eventMatcherPrefersLongestOverlapAndToleratesEarlyStart() {
+    let base = Date(timeIntervalSince1970: 200_000)
+    func event(_ title: String, _ startOffset: TimeInterval, _ endOffset: TimeInterval) -> UpcomingEvent {
+        UpcomingEvent(id: title, title: title, start: base.addingTimeInterval(startOffset), end: base.addingTimeInterval(endOffset), attendees: [], calendarName: "Work")
+    }
+    // Session started 10 minutes before the event: still its event.
+    let early = EventMatcher.pick(events: [event("Call", 600, 2400)], sessionStart: base, sessionEnd: base.addingTimeInterval(900))
+    #expect(early?.title == "Call")
+    // Two overlapping events: the one covering more of the session wins.
+    let short = event("Short", 0, 600)
+    let long = event("Long", -600, 3600)
+    let picked = EventMatcher.pick(events: [short, long], sessionStart: base, sessionEnd: base.addingTimeInterval(1800))
+    #expect(picked?.title == "Long")
+    // Nothing near the session: no match.
+    let none = EventMatcher.pick(events: [event("Far", 7200, 9000)], sessionStart: base, sessionEnd: base.addingTimeInterval(1800))
+    #expect(none == nil)
+}
+
+@Test func transcriptExportMarkdownCarriesTheMeeting() {
+    let date = Date(timeIntervalSince1970: 300_000)
+    let segments = [
+        TranscriptSegment(channel: "them", text: "What is your salary expectation?", isFinal: true),
+        TranscriptSegment(channel: "me", text: "EUR 95,000.", isFinal: true),
+        TranscriptSegment(channel: "me", text: "partial draft", isFinal: false),
+    ]
+    let md = TranscriptExport.markdown(title: "KNIME Interview", date: date, attendees: ["Christian Birkhold"], location: "Google Meet", segments: segments, summary: "## Overview\nGood talk.")
+    #expect(md.hasPrefix("# KNIME Interview"))
+    #expect(md.contains("Invited: Christian Birkhold"))
+    #expect(md.contains("Location: Google Meet"))
+    #expect(md.contains("**Them:** What is your salary expectation?"))
+    #expect(md.contains("**Me:** EUR 95,000."))
+    #expect(!md.contains("partial draft"))
+    #expect(md.contains("## Overview"))
+}
+
+@Test func transcriptExportFileNameIsSafe() {
+    let date = Date(timeIntervalSince1970: 300_000)
+    let name = TranscriptExport.fileName(title: "KNIME: Interview / Director", date: date)
+    #expect(name.hasPrefix("KNIME-Interview-Director-"))
+    #expect(name.hasSuffix(".md"))
+    #expect(!name.contains(" "))
+    #expect(!name.contains("/"))
+    #expect(TranscriptExport.fileName(title: "///", date: date).hasPrefix("Meeting-"))
 }

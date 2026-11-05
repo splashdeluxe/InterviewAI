@@ -289,11 +289,17 @@ final class LiveSession {
         let apiKey = ProviderSettings.apiKey
         let segments = meeting.segments
         let notes = meeting.notes
+        let title = meeting.title
+        let attendees = meeting.attendees.isEmpty ? [] : meeting.attendees.components(separatedBy: ", ")
         Task {
+            // A summary is a document, not a spoken answer: it gets a
+            // bigger token budget than the 400 the answer path uses.
+            // At 400 the notes were cut off before they said anything.
             let text = try? await Brain.complete(
                 config: config, apiKey: apiKey,
-                system: "You write short, factual meeting notes. Use only the transcript. No invented names, numbers, or decisions.",
-                user: PromptBuilder.summaryMessage(transcript: segments, notes: notes)
+                system: "You write clear, complete, factual meeting notes. Use only the transcript. No invented names, numbers, or decisions.",
+                user: PromptBuilder.summaryMessage(transcript: segments, notes: notes, title: title, attendees: attendees),
+                maxTokens: 1200
             )
             guard let text, !text.isEmpty else { return }
             let parts = text.components(separatedBy: "===")
