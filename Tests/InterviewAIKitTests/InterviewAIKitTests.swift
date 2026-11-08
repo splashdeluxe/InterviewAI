@@ -467,3 +467,32 @@ func echoCatchesOneWordDifference() {
     #expect(!name.contains("/"))
     #expect(TranscriptExport.fileName(title: "///", date: date).hasPrefix("Meeting-"))
 }
+
+@Test func answerLanguageDetectsTheOtherSidesLanguage() {
+    let german = ["Können Sie mir sagen, wie die Rolle im Team organisiert ist und welche Aufgaben im ersten Jahr am wichtigsten wären?"]
+    #expect(AnswerLanguage.detect(in: german) == "German")
+    let english = ["Could you tell me how the role is set up in the team and what would matter most in the first year?"]
+    #expect(AnswerLanguage.detect(in: english) == "English")
+    // A greeting is not a language sample: no instruction at all.
+    #expect(AnswerLanguage.detect(in: ["Hallo!"]) == nil)
+    #expect(AnswerLanguage.detect(in: []) == nil)
+}
+
+@Test func answerLanguagePinnedSettingWinsOverDetection() {
+    let german = ["Können Sie mir sagen, wie die Rolle im Team organisiert ist und welche Aufgaben im ersten Jahr am wichtigsten wären?"]
+    #expect(AnswerLanguage.resolve(setting: "English", themLines: german) == "English")
+    #expect(AnswerLanguage.resolve(setting: "", themLines: german) == "German")
+    #expect(AnswerLanguage.resolve(setting: "  ", themLines: []) == nil)
+}
+
+@Test func answerLanguageReachesBothPromptLayers() {
+    let system = PromptBuilder.systemPrompt(modePrompt: "MODE", answerLanguage: "German")
+    #expect(system.contains("write every answer in German"))
+    let plain = PromptBuilder.systemPrompt(modePrompt: "MODE")
+    #expect(!plain.contains("Answer language"))
+    let segments = [TranscriptSegment(channel: "them", text: "Wie ist das Gehalt?", isFinal: true)]
+    let user = PromptBuilder.userMessage(action: nil, typedQuestion: nil, customContext: "", documents: [], transcript: segments, screenshotNote: false, answerLanguage: "German")
+    #expect(user.hasSuffix("Write the answer in German."))
+    let userPlain = PromptBuilder.userMessage(action: nil, typedQuestion: nil, customContext: "", documents: [], transcript: segments, screenshotNote: false)
+    #expect(!userPlain.contains("Write the answer in"))
+}

@@ -233,14 +233,21 @@ final class LiveSession {
         if !profile.isEmpty {
             combinedContext += "\n\n" + profile
         }
-        let system = PromptBuilder.systemPrompt(modePrompt: mode.definition.prompt)
+        // Answers land in the pinned language from Settings, or match
+        // the other side's language when the setting is on Automatic.
+        let answerLanguage = AnswerLanguage.resolve(
+            setting: UserDefaults.standard.string(forKey: "answers.language") ?? "",
+            themLines: displaySegments.filter { $0.channel == "them" && $0.isFinal }.map(\.text)
+        )
+        let system = PromptBuilder.systemPrompt(modePrompt: mode.definition.prompt, answerLanguage: answerLanguage)
         let user = PromptBuilder.userMessage(
             action: action,
             typedQuestion: typedQuestion,
             customContext: combinedContext,
             documents: model.contextDocuments(),
             transcript: displaySegments,
-            screenshotNote: screenshot != nil
+            screenshotNote: screenshot != nil,
+            answerLanguage: answerLanguage
         )
         let imageBase64 = (screenshot != nil && config.visionModel) ? screenshot?.base64EncodedString() : nil
         if screenshot != nil && !config.visionModel {

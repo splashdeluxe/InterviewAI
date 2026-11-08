@@ -75,6 +75,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
 struct GeneralSettings: View {
     @Environment(AppModel.self) private var model
     @AppStorage("session.autoAnswer") private var autoAnswer = true
+    @AppStorage("answers.language") private var answerLanguage = ""
     @AppStorage("overlay.opacity") private var overlayOpacity = 1.0
     @AppStorage("reading.highlightKeywords") private var highlightKeywords = true
     @AppStorage("reading.answerFontSize") private var answerFontSize = 14.0
@@ -85,6 +86,15 @@ struct GeneralSettings: View {
         Section("Live Session") {
             Toggle("Auto Answer", isOn: $autoAnswer)
             Text("When the other side finishes a question, an answer starts on its own. Off means answers wait for ⌘1 to ⌘7 or the ask box.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Picker("Answer Language", selection: $answerLanguage) {
+                Text("Match the other side").tag("")
+                ForEach(AnswerLanguage.languages, id: \.self) { language in
+                    Text(language).tag(language)
+                }
+            }
+            Text("Answers are written in the language the other side is speaking, detected on this Mac. Pick a language instead to pin every answer to it, whatever the call is in.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Slider(value: $overlayOpacity, in: 0.5...1.0) {

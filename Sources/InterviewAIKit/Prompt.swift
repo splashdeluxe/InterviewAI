@@ -31,8 +31,16 @@ public enum PromptBuilder {
     /// Word budget for context in one prompt, roughly 6,000 characters.
     public static let contextCharBudget = 24_000
 
-    public static func systemPrompt(modePrompt: String) -> String {
-        modePrompt + "\n\nRules: use only facts from the context and the conversation. If a fact is not there, do not invent it. Keep answers speakable and short unless I ask for detail."
+    public static func systemPrompt(modePrompt: String, answerLanguage: String? = nil) -> String {
+        var prompt = modePrompt + "\n\nRules: use only facts from the context and the conversation. If a fact is not there, do not invent it. Keep answers speakable and short unless I ask for detail."
+        if let answerLanguage, !answerLanguage.isEmpty {
+            // The context and the profile are usually in the user's
+            // language, the call in the other side's. Without this rule
+            // a small model answers in whichever language the context
+            // is written in, not the language of the conversation.
+            prompt += "\n\nAnswer language: write every answer in \(answerLanguage), even when the context, my notes, or the documents are in another language. Names, figures, and quoted facts stay exactly as they are."
+        }
+        return prompt
     }
 
     /// The user message: context block, recent transcript, then the task.
@@ -42,7 +50,8 @@ public enum PromptBuilder {
         customContext: String,
         documents: [(name: String, text: String, pinned: Bool)],
         transcript: [TranscriptSegment],
-        screenshotNote: Bool
+        screenshotNote: Bool,
+        answerLanguage: String? = nil
     ) -> String {
         let question = typedQuestion ?? transcript.last(where: { $0.channel == "them" && $0.isFinal })?.text ?? ""
         var parts: [String] = []
@@ -87,6 +96,11 @@ public enum PromptBuilder {
         }
         if screenshotNote {
             task += "\n\nA screenshot of my screen is attached. Use what it shows."
+        }
+        if let answerLanguage, !answerLanguage.isEmpty {
+            // Restated at the very end, where a small model weights an
+            // instruction most: the system rule alone was not enough.
+            task += "\n\nWrite the answer in \(answerLanguage)."
         }
         parts.append(task)
         return parts.joined(separator: "\n\n")
