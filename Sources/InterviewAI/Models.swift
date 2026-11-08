@@ -319,21 +319,52 @@ final class AppModel {
         meeting.transcriptJSON = TranscriptSegment.encode(session.finalSegments)
         meeting.notes = session.notes
         if let event {
-            meeting.eventID = event.id
-            meeting.attendees = event.attendees.joined(separator: ", ")
-            meeting.calendarName = event.calendarName
-            meeting.eventLocation = event.location
-            var details = event.details
-            if !event.url.isEmpty {
-                details = details.isEmpty ? event.url : details + "\n" + event.url
-            }
-            meeting.eventDetails = details
-            meeting.eventStart = event.start
-            meeting.eventEnd = event.end
+            stamp(meeting, with: event)
         }
         container.mainContext.insert(meeting)
         try? container.mainContext.save()
         selectedMeeting = meeting.id
         return meeting
+    }
+
+    /// Put a calendar event's name and people on a meeting: the title,
+    /// who was invited, where, and the event's own notes.
+    private func stamp(_ meeting: Meeting, with event: UpcomingEvent) {
+        meeting.title = event.title
+        meeting.eventID = event.id
+        meeting.attendees = event.attendees.joined(separator: ", ")
+        meeting.calendarName = event.calendarName
+        meeting.eventLocation = event.location
+        var details = event.details
+        if !event.url.isEmpty {
+            details = details.isEmpty ? event.url : details + "\n" + event.url
+        }
+        meeting.eventDetails = details
+        meeting.eventStart = event.start
+        meeting.eventEnd = event.end
+    }
+
+    /// The user picking which calendar event a saved meeting was, from
+    /// its history. An event renames the meeting and brings its people;
+    /// nil takes the link away and the meeting goes back to its
+    /// composed mode-and-time title. The calendar itself is never
+    /// touched, only the saved meeting.
+    func setCalendarEvent(_ event: UpcomingEvent?, for meeting: Meeting) {
+        if let event {
+            stamp(meeting, with: event)
+        } else {
+            meeting.eventID = ""
+            meeting.attendees = ""
+            meeting.calendarName = ""
+            meeting.eventLocation = ""
+            meeting.eventDetails = ""
+            meeting.eventStart = nil
+            meeting.eventEnd = nil
+            let formatter = DateFormatter()
+            formatter.dateStyle = .medium
+            formatter.timeStyle = .short
+            meeting.title = "\(meeting.modeName) · \(formatter.string(from: meeting.startedAt))"
+        }
+        try? container.mainContext.save()
     }
 }

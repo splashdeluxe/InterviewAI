@@ -419,12 +419,90 @@ struct OverlayTranscriptList: View {
 
 // MARK: Meetings
 
+/// "Which meeting was this?" Pick the calendar event a saved meeting
+/// belongs to, from the events of the meeting's own day. Choosing one
+/// renames the meeting and brings the invited people and the event
+/// details with it; "No calendar event" takes a wrong link away. Only
+/// the saved meeting changes, the calendar is never edited.
+struct MeetingEventPicker: View {
+    let meeting: Meeting
+    var onPick: (UpcomingEvent?) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var events: [UpcomingEvent] = []
+    @State private var loaded = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Space.md) {
+            Text("Which meeting was this?")
+                .font(.headline)
+            Text("Pick the calendar event this recording belongs to. The meeting takes its name, the invited people, and the event details.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+            if !CalendarService.hasFullAccess {
+                Text("Calendar access is off, so no events can be shown. Turn it on under Settings, Permissions.")
+                    .font(.callout)
+            } else if loaded && events.isEmpty {
+                Text("No events on \(meeting.startedAt.formatted(date: .abbreviated, time: .omitted)).")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            } else {
+                List {
+                    Button {
+                        onPick(nil)
+                    } label: {
+                        HStack {
+                            Text("No calendar event")
+                            Spacer()
+                            if meeting.eventID.isEmpty {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                    ForEach(events) { event in
+                        Button {
+                            onPick(event)
+                        } label: {
+                            HStack {
+                                VStack(alignment: .leading, spacing: Space.xs) {
+                                    Text(event.title)
+                                    Text("\(event.start.formatted(date: .omitted, time: .shortened)) – \(event.end.formatted(date: .omitted, time: .shortened)) · \(event.calendarName)")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                if event.id == meeting.eventID {
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
+                    }
+                }
+                .listStyle(.plain)
+            }
+            HStack {
+                Spacer()
+                Button("Cancel") { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+            }
+        }
+        .padding()
+        .frame(minWidth: 440, minHeight: 340)
+        .onAppear {
+            let day = Calendar.current.startOfDay(for: meeting.startedAt)
+            let next = Calendar.current.date(byAdding: .day, value: 1, to: day) ?? day
+            events = CalendarService.events(from: day, to: next)
+            loaded = true
+        }
+    }
+}
+
 struct MeetingsPage: View {
     @Environment(AppModel.self) private var model
     @Environment(\.modelContext) private var context
     @Query(sort: \Meeting.startedAt, order: .reverse) private var meetings: [Meeting]
     @State private var search = ""
     @State private var tab = "Transcript"
+    @State private var showEventPicker = false
     @AppStorage("reading.transcriptFontSize") private var transcriptFontSize = 14.0
 
     /// List rows are narrow: a composed title ("General · Nov 4, 2026
@@ -547,6 +625,15 @@ struct MeetingsPage: View {
                             )
                         }
                         .disabled(meeting.segments.isEmpty)
+                        Button(meeting.eventID.isEmpty ? "Link to Calendar Event…" : "Change Calendar Event…") {
+                            showEventPicker = true
+                        }
+                    }
+                }
+                .sheet(isPresented: $showEventPicker) {
+                    MeetingEventPicker(meeting: meeting) { event in
+                        model.setCalendarEvent(event, for: meeting)
+                        showEventPicker = false
                     }
                 }
                 Picker("View", selection: $tab) {

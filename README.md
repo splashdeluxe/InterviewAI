@@ -78,6 +78,8 @@ Optional, in Settings, Speech: translate each line as it lands (English, German,
 
 Answers can follow the call: in Settings, General, Answer Language matches the other side by default, detected on your Mac from what they said, or pinned to one language (English, German, Russian, Indonesian, Spanish, French) whatever the call is in.
 
+A saved meeting takes its calendar event's name and people on its own. Wrong match, or none? Open the meeting in the history and choose Link to Calendar Event to pick which meeting it was; the name, the invited people, and the event details follow your pick.
+
 ## Privacy
 
 Audio is transcribed on your Mac and never recorded. Meetings and context files live in a local store on the Mac. The only data that leaves the machine is the prompt sent to the provider you chose, and a bug report if you write one and press Submit. There is no analytics, no tracking, and no account to create.

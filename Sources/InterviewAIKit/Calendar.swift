@@ -108,6 +108,17 @@ public enum CalendarService {
         return EventMatcher.pick(events: events, sessionStart: start, sessionEnd: end)
     }
 
+    /// Every event in a time range, earliest first. Empty without full
+    /// access. Used to let the user pick which event a saved meeting
+    /// belongs to: the events of the meeting's own day.
+    public static func events(from: Date, to: Date) -> [UpcomingEvent] {
+        guard hasFullAccess else { return [] }
+        let predicate = store.predicateForEvents(withStart: from, end: to, calendars: nil)
+        return store.events(matching: predicate)
+            .sorted { $0.startDate < $1.startDate }
+            .map { map($0) }
+    }
+
     /// Events from now until `days` ahead, earliest first. Empty without
     /// full access. All-day events are included; the views label them.
     public static func upcoming(days: Int = 7, limit: Int = 20) -> [UpcomingEvent] {
