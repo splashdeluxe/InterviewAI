@@ -1,5 +1,5 @@
 blank_issues_enabled: true
 contact_links:
   - name: Report from the app
-    url: https://github.com/splashdeluxe/InterviewAI/releases/tag/v1.0.0
+    url: https://github.com/splashdeluxe/InterviewAI/releases/latest
     about: Fastest route: in InterviewAI, open the menu at the foot of the sidebar, then Report an Issue. One click files the report with version and system details attached.

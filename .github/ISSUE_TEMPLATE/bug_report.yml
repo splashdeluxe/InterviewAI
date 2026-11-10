@@ -1,0 +1,45 @@
+name: Bug report
+description: Something is broken, or behaves in a way it should not.
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting it. Short is fine, specifics help: what you pressed, what you saw, what you expected instead.
+        Filing from the app is even better: the menu at the foot of the sidebar has Report an Issue, which attaches the version and system details on its own.
+  - type: input
+    id: version
+    attributes:
+      label: InterviewAI version
+      description: Found in the app menu under About, for example 1.11.0.
+      placeholder: "1.11.0"
+    validations:
+      required: true
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version
+      placeholder: "macOS 27.2"
+    validations:
+      required: false
+  - type: textarea
+    id: happened
+    attributes:
+      label: What happened
+      description: What went wrong, in your own words.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected instead
+    validations:
+      required: false
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps that lead to it
+      description: One step per line. If it only happens sometimes, say so.
+    validations:
+      required: false
