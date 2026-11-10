@@ -20,6 +20,18 @@ A free, native Mac copilot for interviews and meetings. It listens to both sides
 
 <p align="center">The docs are also available as <a href="llms.txt">llms.txt</a> for coding agents.</p>
 
+## Watch how it works
+
+An 18-second tour with real screenshots from the app.
+
+<table>
+  <tr>
+    <td align="center" width="33%"><a href="https://github.com/splashdeluxe/InterviewAI/blob/main/assets/demo.gif"><img src="assets/posters/run-live.jpg" alt="Film poster, Live: both sides transcribed, answers while you talk"></a><br><code>live</code>: both sides, transcribed</td>
+    <td align="center" width="33%"><a href="https://github.com/splashdeluxe/InterviewAI/blob/main/assets/demo.gif"><img src="assets/posters/run-context.jpg" alt="Film poster, Context: answers grounded in your own files"></a><br><code>context</code>: grounded in your files</td>
+    <td align="center" width="33%"><a href="https://github.com/splashdeluxe/InterviewAI/blob/main/assets/demo.gif"><img src="assets/posters/run-meetings.jpg" alt="Film poster, Meetings: transcript, summary and follow-up saved"></a><br><code>meetings</code>: kept by themselves</td>
+  </tr>
+</table>
+
 ---
 
 ## What this is
