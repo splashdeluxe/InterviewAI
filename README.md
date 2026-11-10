@@ -120,7 +120,7 @@ No. Audio is transcribed in memory and never written to disk. The transcript, no
 No. InterviewAI is a native macOS app and uses Mac-only frameworks for system audio.
 
 **Where is the download?**
-On the [release page](https://github.com/splashdeluxe/InterviewAI/releases/tag/v1.4.0): InterviewAI-1.4.0.dmg, about 19 MB. Building from source with `./build.sh --open` works too.
+On the [release page](https://github.com/splashdeluxe/InterviewAI/releases/latest): the latest InterviewAI.dmg, about 12 MB. Building from source with `./build.sh --open` works too.
 
 ## Support
 
