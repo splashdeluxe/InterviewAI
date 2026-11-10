@@ -37,7 +37,7 @@ struct ReportIssueView: View {
                     .font(.callout.weight(.semibold))
                 TextEditor(text: $text)
                     .font(.callout)
-                    .frame(height: 170)
+                    .frame(height: 170) // grid: ok report text area height, content-driven
                     .overlay(RoundedRectangle(cornerRadius: Radius.control, style: .continuous)
                         .strokeBorder(Surface.hairline, lineWidth: 1))
             }
@@ -69,7 +69,7 @@ struct ReportIssueView: View {
                             .foregroundStyle(.secondary)
                     }
                 }
-                .frame(height: 110)
+                .frame(height: 110) // grid: ok context text area height, content-driven
             }
 
             statusRow

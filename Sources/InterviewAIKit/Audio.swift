@@ -50,6 +50,15 @@ public enum PermissionState {
     public static func requestMicrophone() async -> Bool {
         await AVCaptureDevice.requestAccess(for: .audio)
     }
+
+    /// The one explicit ask for system-audio capture, used by the
+    /// first-open setup and nothing else: macOS shows its Screen
+    /// Recording prompt. When access was already denied this returns
+    /// the current state without showing anything, and System
+    /// Settings is the way from there.
+    public static func requestScreenRecording() -> Bool {
+        CGRequestScreenCaptureAccess()
+    }
 }
 
 /// Which engine turns audio into text, chosen in Settings, Speech.

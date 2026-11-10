@@ -29,23 +29,41 @@ struct SettingsView: View {
 
     @ViewBuilder
     private func page(_ tab: SettingsTab) -> some View {
-        Form {
-            switch tab {
-            case .general: GeneralSettings()
-            case .providers: ProvidersSettings()
-            case .speech: SpeechSettings()
-            case .permissions: PermissionsSettings()
-            case .help: HelpSettings()
-            case .about: AboutSettings()
+        switch tab {
+        // The app-info trio carries its own pages, shared with the
+        // standalone About window; they do not sit inside the Form.
+        // They scroll, exactly as in that window, so tall pages are
+        // never clipped at the top.
+        case .about: infoPage { AboutPane() }
+        case .whatsNew: infoPage { WhatsNewPane() }
+        case .support: infoPage { SupportPane() }
+        default:
+            Form {
+                switch tab {
+                case .general: GeneralSettings()
+                case .providers: ProvidersSettings()
+                case .speech: SpeechSettings()
+                case .permissions: PermissionsSettings()
+                case .help: HelpSettings()
+                case .about, .whatsNew, .support: EmptyView()
+                }
             }
+            .formStyle(.grouped)
+            .frame(width: 560)
         }
-        .formStyle(.grouped)
-        .frame(width: 560)
+    }
+
+    private func infoPage<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        ScrollView {
+            content()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(Space.xl)
+        }
     }
 }
 
 enum SettingsTab: String, CaseIterable, Identifiable {
-    case general, providers, speech, permissions, help, about
+    case general, providers, speech, permissions, help, about, whatsNew, support
 
     var id: String { rawValue }
 
@@ -57,6 +75,8 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .permissions: "Permissions"
         case .help: "Help"
         case .about: "About"
+        case .whatsNew: "What's New"
+        case .support: "Support"
         }
     }
 
@@ -68,6 +88,8 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .permissions: "lock.shield"
         case .help: "questionmark.circle"
         case .about: "info.circle"
+        case .whatsNew: "sparkles"
+        case .support: "heart"
         }
     }
 }
@@ -479,19 +501,6 @@ struct HelpSettings: View {
         }
         Section("Privacy") {
             Text("Transcription is on-device. Context files and meetings stay in a local database. The only data that leaves this Mac is the prompt sent to the provider you picked, with your key or to your local model.")
-        }
-    }
-}
-
-struct AboutSettings: View {
-    var body: some View {
-        Section("InterviewAI") {
-            LabeledContent("Version", value: UpdateChecker.currentVersion)
-            LabeledContent("Price", value: "Free. No account, licence, trial, quota, or store.")
-            LabeledContent("Updates", value: "App menu, About InterviewAI, then Check for Updates.")
-            Text("An original Swift app by Nils Effmert, written from scratch. It contains no third-party app code, text, prompts, icons, or branding.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
         }
     }
 }

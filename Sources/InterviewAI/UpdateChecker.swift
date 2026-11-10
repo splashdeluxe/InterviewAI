@@ -25,8 +25,16 @@ final class UpdateChecker {
 
     private static let lastCheckKey = "update.lastCheck"
 
-    /// One quiet check a day, called at launch.
+    /// When the last check ran, shown in About. Nil until the first one.
+    static var lastCheck: Date? {
+        UserDefaults.standard.object(forKey: lastCheckKey) as? Date
+    }
+
+    /// One quiet check a day, called at launch. The automatic check
+    /// can be turned off in About; a manual check always runs.
     func checkIfStale() {
+        let automatic = UserDefaults.standard.object(forKey: "update.automaticCheck") as? Bool ?? true
+        guard automatic else { return }
         if let last = UserDefaults.standard.object(forKey: Self.lastCheckKey) as? Date,
            Date.now.timeIntervalSince(last) < 24 * 60 * 60 { return }
         Task { await check() }

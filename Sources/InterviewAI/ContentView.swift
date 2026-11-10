@@ -4,6 +4,8 @@ import SwiftUI
 struct ContentView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.openSettings) private var openSettings
+    @AppStorage("onboarding.completed") private var onboardingCompleted = false
+    @State private var showOnboarding = false
 
     var body: some View {
         NavigationSplitView {
@@ -12,6 +14,16 @@ struct ContentView: View {
             page
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(Surface.canvas)
+        }
+        .onAppear {
+            if !onboardingCompleted { showOnboarding = true }
+        }
+        .sheet(isPresented: $showOnboarding) {
+            OnboardingView {
+                onboardingCompleted = true
+                showOnboarding = false
+            }
+            .interactiveDismissDisabled()
         }
         .task {
             SeedData.insertIfRequested(into: model)
@@ -112,7 +124,7 @@ struct ContentView: View {
             Image(systemName: "line.3.horizontal")
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(Surface.onInk)
-                .frame(width: 26, height: 26)
+                .frame(width: 26, height: 26) // grid: ok glyph hit frame
                 .background(Circle().fill(Surface.ink))
         }
         .menuIndicator(.hidden)

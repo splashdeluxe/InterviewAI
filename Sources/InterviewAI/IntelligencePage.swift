@@ -49,7 +49,7 @@ struct IntelligencePage: View {
                     }
                     .padding(Space.lg)
                 }
-                .frame(minWidth: 300, idealWidth: 340, maxWidth: 430)
+                .frame(minWidth: 300, idealWidth: 340, maxWidth: 430) // grid: ok reading column cap
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: Space.lg) {
@@ -242,7 +242,7 @@ struct IntelligencePage: View {
                 if editingKind == kind {
                     TextEditor(text: textBinding(for: current))
                         .font(.callout)
-                        .frame(minHeight: 150)
+                        .frame(minHeight: 150) // grid: ok editor minimum height
                         .scrollContentBackground(.hidden)
                         .padding(Space.sm)
                         .background(Surface.inset, in: RoundedRectangle(cornerRadius: Radius.control))

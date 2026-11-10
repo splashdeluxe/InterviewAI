@@ -2,6 +2,6 @@
   <rect x="214" y="432" width="84" height="160" rx="42" fill="#FFFFFF"/>
   <rect x="342" y="372" width="84" height="280" rx="42" fill="#FFFFFF"/>
   <rect x="470" y="312" width="84" height="400" rx="42" fill="#FFFFFF"/>
-  <rect x="598" y="372" width="84" height="280" rx="42" fill="#FFFFFF"/>
+  <rect x="598" y="372" width="84" height="280" rx="42" fill="#E30B5C"/>
   <rect x="726" y="432" width="84" height="160" rx="42" fill="#FFFFFF"/>
 </svg>

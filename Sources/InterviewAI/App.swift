@@ -31,6 +31,8 @@ struct InterviewAIApp: App {
         .commands {
             CommandGroup(replacing: .appInfo) {
                 Button("About InterviewAI") { AboutWindow.show() }
+                Button("What's New") { AboutWindow.show(.whatsNew) }
+                Button("Support") { AboutWindow.show(.support) }
                 Button("Check for Updates…") {
                     AboutWindow.show()
                     Task { await UpdateChecker.shared.check() }
@@ -100,7 +102,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let showInDock = UserDefaults.standard.object(forKey: "general.showInDock") as? Bool ?? true
         NSApp.setActivationPolicy(showInDock ? .regular : .accessory)
         NSApp.activate()
-        Task { @MainActor in UpdateChecker.shared.checkIfStale() }
+        Task { @MainActor in
+            WhatsNewLaunch.run()
+            UpdateChecker.shared.checkIfStale()
+        }
     }
 
     // Stay alive in the menu bar when the main window closes. The
@@ -125,7 +130,13 @@ enum Store {
     private static var overrideURL: URL? {
         guard let path = ProcessInfo.processInfo.environment["APP_STORE"], !path.isEmpty else { return nil }
         let resolved = URL(fileURLWithPath: path).resolvingSymlinksInPath().path
-        guard resolved == "/private/tmp" || resolved.hasPrefix("/private/tmp/") else { return nil }
+        // macOS 27 canonicalises /private/tmp back to /tmp in compiled
+        // processes, so accept both spellings, raw and resolved. Checking
+        // only the /private/tmp form made every override refuse.
+        func inTmp(_ p: String) -> Bool {
+            p == "/tmp" || p == "/private/tmp" || p.hasPrefix("/tmp/") || p.hasPrefix("/private/tmp/")
+        }
+        guard inTmp(path) || inTmp(resolved) else { return nil }
         return URL(fileURLWithPath: path)
     }
 
