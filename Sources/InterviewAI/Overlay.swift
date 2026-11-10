@@ -128,14 +128,6 @@ struct OverlayView: View {
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.tertiary)
                     .help("Drag to move the overlay")
-                    .gesture(
-                        DragGesture(coordinateSpace: .global)
-                            .onChanged { value in
-                                if model.overlay.dragStarted == false { model.overlay.beginDrag() }
-                                model.overlay.drag(translation: value.translation)
-                            }
-                            .onEnded { _ in model.overlay.endDrag() }
-                    )
                 StatusDot(listening: session.isListening)
                 Text(session.status)
                     .font(.caption)
@@ -156,6 +148,23 @@ struct OverlayView: View {
                     .buttonStyle(QuietButtonStyle())
                     .help("Close the overlay (⌘⇧H)")
             }
+            // The whole header is the drag handle (issue #3: the grip
+            // icon alone was a caption-sized target and the panel's
+            // movable-by-background never engaged through the hosting
+            // view, so for real users the overlay would not move).
+            // Buttons keep their clicks: a drag only starts after the
+            // pointer has actually moved. The content shape makes the
+            // spacer and label areas count as header, not just glyphs.
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(coordinateSpace: .global)
+                    .onChanged { value in
+                        if model.overlay.dragStarted == false { model.overlay.beginDrag() }
+                        model.overlay.drag(translation: value.translation)
+                    }
+                    .onEnded { _ in model.overlay.endDrag() }
+            )
+            .help("Drag to move the overlay")
 
             if !collapsed {
                 HSplitView {
