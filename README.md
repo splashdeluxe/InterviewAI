@@ -4,7 +4,7 @@
   <img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT">
   <img src="https://img.shields.io/badge/macOS-14%2B-black" alt="macOS 14 or later">
   <img src="https://img.shields.io/badge/Swift-6-orange" alt="Swift 6">
-  <a href="https://github.com/splashdeluxe/InterviewAI/releases/latest"><img src="https://img.shields.io/github/v/release/splashdeluxe/InterviewAI?label=Release&color=green" alt="Latest release"></a>
+  <a href="https://github.com/splashdeluxe/InterviewAI/releases/tag/v1.4.0"><img src="https://img.shields.io/badge/Release-1.4.0-green" alt="Release 1.4.0"></a>
   <a href="https://github.com/splashdeluxe/InterviewAI/stargazers"><img src="https://img.shields.io/github/stars/splashdeluxe/InterviewAI?style=flat" alt="GitHub stars"></a>
 </p>
 
@@ -15,22 +15,8 @@ A free, native Mac copilot for interviews and meetings. It listens to both sides
 <p align="center">⭐ <strong>If InterviewAI helps you, a star helps the next person find it.</strong></p>
 
 <p align="center">
-<a href="https://github.com/splashdeluxe/InterviewAI/releases/latest">Latest release</a> · <a href="#quick-start">Quick start</a> · <a href="#what-it-does">What it does</a> · <a href="#privacy">Privacy</a> · <a href="#report-a-bug">Report a bug</a> · <a href="#faq">FAQ</a> · <a href="https://github.com/splashdeluxe/InterviewAI/issues">Issues</a>
+<a href="https://github.com/splashdeluxe/InterviewAI/releases/tag/v1.4.0">Release 1.4.0</a> · <a href="#quick-start">Quick start</a> · <a href="#what-it-does">What it does</a> · <a href="#privacy">Privacy</a> · <a href="#report-a-bug">Report a bug</a> · <a href="#faq">FAQ</a> · <a href="https://github.com/splashdeluxe/InterviewAI/issues">Issues</a>
 </p>
-
-<p align="center">The docs are also available as <a href="llms.txt">llms.txt</a> for coding agents.</p>
-
-## Watch how it works
-
-An 18-second tour with real screenshots from the app.
-
-<table>
-  <tr>
-    <td align="center" width="33%"><a href="https://github.com/splashdeluxe/InterviewAI/blob/main/assets/demo.gif"><img src="assets/posters/run-live.jpg" alt="Film poster, Live: both sides transcribed, answers while you talk"></a><br><code>live</code>: both sides, transcribed</td>
-    <td align="center" width="33%"><a href="https://github.com/splashdeluxe/InterviewAI/blob/main/assets/demo.gif"><img src="assets/posters/run-context.jpg" alt="Film poster, Context: answers grounded in your own files"></a><br><code>context</code>: grounded in your files</td>
-    <td align="center" width="33%"><a href="https://github.com/splashdeluxe/InterviewAI/blob/main/assets/demo.gif"><img src="assets/posters/run-meetings.jpg" alt="Film poster, Meetings: transcript, summary and follow-up saved"></a><br><code>meetings</code>: kept by themselves</td>
-  </tr>
-</table>
 
 ---
 
@@ -52,7 +38,7 @@ An original Swift app for macOS. No account, no licence key, no trial, no quota,
 
 ## Quick start
 
-Fastest: download the latest **InterviewAI.dmg** from the [release page](https://github.com/splashdeluxe/InterviewAI/releases/latest), open it, drag the app into Applications, and right-click it once to choose Open (the app is unsigned, so macOS asks the first time).
+Fastest: download **InterviewAI-1.4.0.dmg** from the [release page](https://github.com/splashdeluxe/InterviewAI/releases/tag/v1.4.0), open it, drag the app into Applications, and right-click it once to choose Open (the app is unsigned, so macOS asks the first time).
 
 Or build from source. That needs macOS 14 or later and Xcode installed (for the Swift toolchain). You never open Xcode.
 
@@ -94,6 +80,8 @@ Answers can follow the call: in Settings, General, Answer Language matches the o
 
 A saved meeting takes its calendar event's name and people on its own. Wrong match, or none? Open the meeting in the history and choose Link to Calendar Event to pick which meeting it was; the name, the invited people, and the event details follow your pick.
 
+Dual-Brain, in Settings, Providers, splits the brain in two: live answers in a call keep the fast model, and a bigger Deep model (llama3.1:8b by default, `ollama pull llama3.1:8b`) handles the Ask page, summaries, follow-up drafts and Profile generation, one job at a time. If the Deep model is missing or fails, the live model takes over and the result says so. Off by default; with it off, everything runs on the one model as before.
+
 ## Privacy
 
 Audio is transcribed on your Mac and never recorded. Meetings and context files live in a local store on the Mac. The only data that leaves the machine is the prompt sent to the provider you chose, and a bug report if you write one and press Submit. There is no analytics, no tracking, and no account to create.
@@ -120,7 +108,7 @@ No. Audio is transcribed in memory and never written to disk. The transcript, no
 No. InterviewAI is a native macOS app and uses Mac-only frameworks for system audio.
 
 **Where is the download?**
-On the [release page](https://github.com/splashdeluxe/InterviewAI/releases/latest): the latest InterviewAI.dmg, about 12 MB. Building from source with `./build.sh --open` works too.
+On the [release page](https://github.com/splashdeluxe/InterviewAI/releases/tag/v1.4.0): InterviewAI-1.4.0.dmg, about 19 MB. Building from source with `./build.sh --open` works too.
 
 ## Support
 

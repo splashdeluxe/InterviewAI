@@ -215,6 +215,8 @@ struct ProvidersSettings: View {
     @AppStorage("provider.baseURL") private var baseURL = "http://localhost:11434"
     @AppStorage("provider.model") private var modelName = "llama3.2:1b"
     @AppStorage("provider.vision") private var vision = false
+    @AppStorage("provider.dualBrain") private var dualBrain = false
+    @AppStorage("provider.deepModel") private var deepModel = "llama3.1:8b"
     @State private var keyDraft = ""
     @State private var keySaved = false
     @State private var keySaveFailed = false
@@ -245,6 +247,15 @@ struct ProvidersSettings: View {
             TextField("Model", text: $modelName)
             Toggle("This model can read images", isOn: $vision)
             Text("Local Ollama is free and private: pull a model with `ollama pull llama3.2:1b`, or a vision model like `llama3.2-vision`. The 1B model is the fastest local option. Cloud endpoints use your own key and your own bill with that provider. InterviewAI adds nothing on top.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        Section("Dual-Brain") {
+            Toggle("Dual-Brain", isOn: $dualBrain)
+            if dualBrain {
+                TextField("Deep model", text: $deepModel)
+            }
+            Text("Answers in a live call keep the model above: fast matters more than clever there. The Deep model handles the work outside the call instead: the Ask page, meeting summaries, follow-up drafts and Profile generation. It runs one job at a time and leaves memory five minutes after it finishes. If the Deep model is missing or a request fails, the live model takes over and the result says so.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

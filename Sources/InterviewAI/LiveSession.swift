@@ -292,8 +292,6 @@ final class LiveSession {
     // MARK: Summary
 
     private func summarize(meeting: Meeting) {
-        let config = ProviderSettings.config()
-        let apiKey = ProviderSettings.apiKey
         let segments = meeting.segments
         let notes = meeting.notes
         let title = meeting.title
@@ -302,13 +300,18 @@ final class LiveSession {
             // A summary is a document, not a spoken answer: it gets a
             // bigger token budget than the 400 the answer path uses.
             // At 400 the notes were cut off before they said anything.
-            let text = try? await Brain.complete(
-                config: config, apiKey: apiKey,
+            // It is also Deep work: the big model writes it when
+            // Dual-Brain is on, the live model when it is not.
+            let outcome = try? await DeepWork.complete(
                 system: "You write clear, complete, factual meeting notes. Use only the transcript. No invented names, numbers, or decisions.",
                 user: PromptBuilder.summaryMessage(transcript: segments, notes: notes, title: title, attendees: attendees),
                 maxTokens: 1200
             )
-            guard let text, !text.isEmpty else { return }
+            guard let outcome, !outcome.text.isEmpty else { return }
+            if outcome.fellBack {
+                status = "Summary written by the live model; the deep model was unavailable."
+            }
+            let text = outcome.text
             let parts = text.components(separatedBy: "===")
             meeting.summary = SummaryCleaner.clean(parts.first ?? "")
             if parts.count > 1 {

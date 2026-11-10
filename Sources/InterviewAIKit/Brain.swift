@@ -41,11 +41,11 @@ public enum Brain {
     /// `maxTokens` caps the reply: 400 keeps a spoken answer speakable,
     /// but a summary needs room to be worth reading, so callers that
     /// write documents pass more.
-    public static func stream(config: BrainConfig, apiKey: String, system: String, user: String, imageBase64: String?, maxTokens: Int = 400) -> AsyncThrowingStream<String, Error> {
+    public static func stream(config: BrainConfig, apiKey: String, system: String, user: String, imageBase64: String?, maxTokens: Int = 400, keepAlive: String? = nil) -> AsyncThrowingStream<String, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
                 do {
-                    let request = try makeRequest(config: config, apiKey: apiKey, system: system, user: user, imageBase64: imageBase64, maxTokens: maxTokens)
+                    let request = try makeRequest(config: config, apiKey: apiKey, system: system, user: user, imageBase64: imageBase64, maxTokens: maxTokens, keepAlive: keepAlive)
                     let (bytes, response) = try await URLSession.shared.bytes(for: request)
                     if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
                         var body = ""
@@ -71,9 +71,9 @@ public enum Brain {
     }
 
     /// One full answer, collected. Used for summaries and connection tests.
-    public static func complete(config: BrainConfig, apiKey: String, system: String, user: String, maxTokens: Int = 400) async throws -> String {
+    public static func complete(config: BrainConfig, apiKey: String, system: String, user: String, maxTokens: Int = 400, keepAlive: String? = nil) async throws -> String {
         var out = ""
-        for try await piece in stream(config: config, apiKey: apiKey, system: system, user: user, imageBase64: nil, maxTokens: maxTokens) {
+        for try await piece in stream(config: config, apiKey: apiKey, system: system, user: user, imageBase64: nil, maxTokens: maxTokens, keepAlive: keepAlive) {
             out += piece
         }
         return out
@@ -100,7 +100,7 @@ public enum Brain {
         }
     }
 
-    private static func makeRequest(config: BrainConfig, apiKey: String, system: String, user: String, imageBase64: String?, maxTokens: Int = 400) throws -> URLRequest {
+    private static func makeRequest(config: BrainConfig, apiKey: String, system: String, user: String, imageBase64: String?, maxTokens: Int = 400, keepAlive: String? = nil) throws -> URLRequest {
         let base = config.baseURL.hasSuffix("/") ? String(config.baseURL.dropLast()) : config.baseURL
         let path = config.kind == .ollama ? "/api/chat" : "/v1/chat/completions"
         guard let url = URL(string: base + path) else { throw BrainError.badURL(config.baseURL) }
@@ -134,6 +134,10 @@ public enum Brain {
         switch config.kind {
         case .ollama:
             body["options"] = ["temperature": 0.3, "num_ctx": 8192, "num_predict": maxTokens]
+            // Deep work passes a short keep-alive so the big model
+            // leaves memory soon after the job; live work sends
+            // nothing and keeps Ollama's default.
+            if let keepAlive { body["keep_alive"] = keepAlive }
         case .openAICompatible:
             body["temperature"] = 0.3
             body["max_tokens"] = maxTokens

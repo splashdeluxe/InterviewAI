@@ -888,6 +888,7 @@ struct AskPage: View {
     @State private var sources: [String] = []
     @State private var isAsking = false
     @State private var askError: String?
+    @State private var deepNote: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: Space.md) {
@@ -905,6 +906,9 @@ struct AskPage: View {
             }
             if let askError {
                 Text(askError).foregroundStyle(.red).font(.callout)
+            }
+            if let deepNote {
+                Text(deepNote).foregroundStyle(.secondary).font(.callout)
             }
             ScrollView {
                 Text(answer.isEmpty ? "The answer will appear here." : answer)
@@ -931,6 +935,7 @@ struct AskPage: View {
         guard !asked.isEmpty else { return }
         isAsking = true
         askError = nil
+        deepNote = nil
         answer = ""
         sources = []
 
@@ -945,15 +950,12 @@ struct AskPage: View {
         for doc in bestFiles { contextText += "From \(doc.name):\n\(doc.text.prefix(4_000))\n\n" }
         if contextText.isEmpty { contextText = "(Nothing in the meetings or files matches. Say so if the answer is not covered.)" }
 
-        let config = ProviderSettings.config()
-        let apiKey = ProviderSettings.apiKey
         Task {
             do {
-                for try await piece in Brain.stream(
-                    config: config, apiKey: apiKey,
+                for try await piece in DeepWork.stream(
                     system: "You answer questions about the user's own meetings and files. Use only the material given. Name the meeting or file a fact came from.",
                     user: "Material:\n\(contextText)\n\nQuestion: \(asked)",
-                    imageBase64: nil
+                    onFallback: { deepNote = "Answered by the live model; the deep model was unavailable." }
                 ) {
                     answer += piece
                 }

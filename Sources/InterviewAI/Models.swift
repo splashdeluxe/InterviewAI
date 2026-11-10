@@ -154,6 +154,25 @@ enum ProviderSettings {
     }
 
     static var apiKey: String { KeychainStore.get(account: "provider-key") }
+
+    /// Dual-Brain: a second, bigger model for the work done outside
+    /// a live call. Off unless the user turns it on in Settings,
+    /// Providers; the deep name defaults like the live one does.
+    static var dualBrain: Bool { UserDefaults.standard.bool(forKey: "provider.dualBrain") }
+
+    static var deepModel: String {
+        let defaults = UserDefaults.standard
+        if let stored = defaults.string(forKey: "provider.deepModel"), !stored.isEmpty { return stored }
+        let kind = BrainConfig.Kind(rawValue: defaults.string(forKey: "provider.kind") ?? "ollama") ?? .ollama
+        return kind == .ollama ? BrainRouting.defaultDeepModel : ""
+    }
+
+    /// The config a task runs on: live tasks and a Dual-Brain-off
+    /// install get the live config untouched; deep tasks get the
+    /// Deep model when Dual-Brain is on.
+    static func config(for task: BrainTask) -> BrainConfig {
+        BrainRouting.resolve(task: task, dualBrain: dualBrain, live: config(), deepModel: deepModel)
+    }
 }
 
 /// App-wide state that menus, toolbars, and views share.

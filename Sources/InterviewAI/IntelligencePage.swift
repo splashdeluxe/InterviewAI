@@ -23,6 +23,7 @@ struct IntelligencePage: View {
     @State private var companyName = ""
     @State private var busy: String?
     @State private var errorText: String?
+    @State private var noteText: String?
     @State private var editingKind: String?
     @State private var instructionsDraft = ""
     @State private var extraDraft = ""
@@ -103,6 +104,11 @@ struct IntelligencePage: View {
                     Text(errorText)
                         .font(.caption)
                         .foregroundStyle(.red)
+                }
+                if let noteText {
+                    Text(noteText)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
             Spacer()
@@ -325,10 +331,13 @@ struct IntelligencePage: View {
     private func run(kind: String, label: String, busyLabel: String, prompt: (system: String, user: String)) async {
         busy = busyLabel
         errorText = nil
+        noteText = nil
         do {
-            let text = try await Brain.complete(config: ProviderSettings.config(), apiKey: ProviderSettings.apiKey,
-                                                system: prompt.system, user: prompt.user)
-            store.insert(IntelligenceDoc(kind: kind, label: label, text: text))
+            let outcome = try await DeepWork.complete(system: prompt.system, user: prompt.user)
+            if outcome.fellBack {
+                noteText = "Written by the live model; the deep model was unavailable."
+            }
+            store.insert(IntelligenceDoc(kind: kind, label: label, text: outcome.text))
             try? store.save()
         } catch {
             errorText = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription

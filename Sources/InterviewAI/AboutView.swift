@@ -43,6 +43,14 @@ struct ReleaseNotes: Identifiable {
 
     static let all: [ReleaseNotes] = [
         ReleaseNotes(
+            version: "1.11.0", date: "2026-11-10",
+            summary: "Dual-Brain: a bigger model for the thinking done outside the call, while live answers stay on the fast one.",
+            added: [
+                "Settings, Providers gains Dual-Brain. Turn it on and name a Deep model (llama3.1:8b by default): the Ask page, meeting summaries, follow-up drafts and Profile generation use it, one job at a time, and it leaves memory again five minutes after a job finishes.",
+                "If the Deep model is missing or a request fails, the job falls back to the live model and the result says so. Answers in a live call never switch models."
+            ]
+        ),
+        ReleaseNotes(
             version: "1.10.0", date: "2026-11-10",
             summary: "The first open now walks through the three permissions the app needs, each with its own enable button, instead of leaving them to be found in Settings.",
             added: [
