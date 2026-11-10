@@ -18,6 +18,8 @@ A free, native Mac copilot for interviews and meetings. It listens to both sides
 <a href="https://github.com/splashdeluxe/InterviewAI/releases/tag/v1.4.0">Release 1.4.0</a> · <a href="#quick-start">Quick start</a> · <a href="#what-it-does">What it does</a> · <a href="#privacy">Privacy</a> · <a href="#report-a-bug">Report a bug</a> · <a href="#faq">FAQ</a> · <a href="https://github.com/splashdeluxe/InterviewAI/issues">Issues</a>
 </p>
 
+<p align="center">The docs are also available as <a href="llms.txt">llms.txt</a> for coding agents.</p>
+
 ---
 
 ## What this is
