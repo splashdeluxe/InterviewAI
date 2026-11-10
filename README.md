@@ -4,7 +4,7 @@
   <img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT">
   <img src="https://img.shields.io/badge/macOS-14%2B-black" alt="macOS 14 or later">
   <img src="https://img.shields.io/badge/Swift-6-orange" alt="Swift 6">
-  <a href="https://github.com/splashdeluxe/InterviewAI/releases/tag/v1.4.0"><img src="https://img.shields.io/badge/Release-1.4.0-green" alt="Release 1.4.0"></a>
+  <a href="https://github.com/splashdeluxe/InterviewAI/releases/latest"><img src="https://img.shields.io/github/v/release/splashdeluxe/InterviewAI?label=Release&color=green" alt="Latest release"></a>
   <a href="https://github.com/splashdeluxe/InterviewAI/stargazers"><img src="https://img.shields.io/github/stars/splashdeluxe/InterviewAI?style=flat" alt="GitHub stars"></a>
 </p>
 
@@ -15,7 +15,7 @@ A free, native Mac copilot for interviews and meetings. It listens to both sides
 <p align="center">⭐ <strong>If InterviewAI helps you, a star helps the next person find it.</strong></p>
 
 <p align="center">
-<a href="https://github.com/splashdeluxe/InterviewAI/releases/tag/v1.4.0">Release 1.4.0</a> · <a href="#quick-start">Quick start</a> · <a href="#what-it-does">What it does</a> · <a href="#privacy">Privacy</a> · <a href="#report-a-bug">Report a bug</a> · <a href="#faq">FAQ</a> · <a href="https://github.com/splashdeluxe/InterviewAI/issues">Issues</a>
+<a href="https://github.com/splashdeluxe/InterviewAI/releases/latest">Latest release</a> · <a href="#quick-start">Quick start</a> · <a href="#what-it-does">What it does</a> · <a href="#privacy">Privacy</a> · <a href="#report-a-bug">Report a bug</a> · <a href="#faq">FAQ</a> · <a href="https://github.com/splashdeluxe/InterviewAI/issues">Issues</a>
 </p>
 
 <p align="center">The docs are also available as <a href="llms.txt">llms.txt</a> for coding agents.</p>
@@ -52,7 +52,7 @@ An original Swift app for macOS. No account, no licence key, no trial, no quota,
 
 ## Quick start
 
-Fastest: download **InterviewAI-1.4.0.dmg** from the [release page](https://github.com/splashdeluxe/InterviewAI/releases/tag/v1.4.0), open it, drag the app into Applications, and right-click it once to choose Open (the app is unsigned, so macOS asks the first time).
+Fastest: download the latest **InterviewAI.dmg** from the [release page](https://github.com/splashdeluxe/InterviewAI/releases/latest), open it, drag the app into Applications, and right-click it once to choose Open (the app is unsigned, so macOS asks the first time).
 
 Or build from source. That needs macOS 14 or later and Xcode installed (for the Swift toolchain). You never open Xcode.
 
