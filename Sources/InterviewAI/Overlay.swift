@@ -62,26 +62,6 @@ final class OverlayController {
         isShown = false
     }
 
-    /// Grip dragging: the header grip records where the panel stood
-    /// when the drag began, then follows the pointer. Screen space is
-    /// y-up, SwiftUI drag space is y-down, so the y flips.
-    @ObservationIgnored private var dragOrigin: NSPoint?
-
-    var dragStarted: Bool { dragOrigin != nil }
-
-    func beginDrag() {
-        dragOrigin = panel?.frame.origin
-    }
-
-    func drag(translation: CGSize) {
-        guard let panel, let dragOrigin else { return }
-        panel.setFrameOrigin(NSPoint(x: dragOrigin.x + translation.width, y: dragOrigin.y - translation.height))
-    }
-
-    func endDrag() {
-        dragOrigin = nil
-    }
-
     /// Collapse to the header bar, or back to the remembered height.
     /// The top edge stays put; the panel grows and shrinks downward.
     func toggleCollapse() {
@@ -112,6 +92,28 @@ final class MovableHostingView: NSHostingView<AnyView> {
     override var mouseDownCanMoveWindow: Bool { true }
 }
 
+/// The overlay's drag handle, an AppKit view behind the header row.
+/// Issue #3 took two rounds: SwiftUI drag gestures do not track in a
+/// non-activating panel. The buttons always worked, the drag never
+/// did, first on the grip icon and then on the whole header. So the
+/// drag now runs through AppKit itself: performDrag takes over the
+/// tracking loop and moves the window natively, activation or not.
+/// Non-interactive header content sits above this view with hit
+/// testing off, so presses land here; the header buttons stay live
+/// above it and keep their clicks.
+final class WindowDragView: NSView {
+    override var mouseDownCanMoveWindow: Bool { true }
+
+    override func mouseDown(with event: NSEvent) {
+        window?.performDrag(with: event)
+    }
+}
+
+struct DragHandle: NSViewRepresentable {
+    func makeNSView(context: Context) -> WindowDragView { WindowDragView() }
+    func updateNSView(_ nsView: WindowDragView, context: Context) {}
+}
+
 /// The overlay content: transcript left, answer right, action row, ask box.
 struct OverlayView: View {
     @Environment(AppModel.self) private var model
@@ -123,20 +125,30 @@ struct OverlayView: View {
         let session = model.session
         let collapsed = model.overlay.isCollapsed
         VStack(spacing: Space.sm) {
-            HStack(spacing: Space.sm) {
+            // The AppKit drag handle fills the header behind the row;
+            // everything in the row that is not a control has hit
+            // testing off, so a press on the grip, the status, or the
+            // mode name lands on the handle and moves the window.
+            ZStack {
+                DragHandle()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                HStack(spacing: Space.sm) {
                 Image(systemName: "line.3.horizontal")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.tertiary)
-                    .help("Drag to move the overlay")
+                    .allowsHitTesting(false)
                 StatusDot(listening: session.isListening)
+                    .allowsHitTesting(false)
                 Text(session.status)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
+                    .allowsHitTesting(false)
                 Spacer()
                 Text(model.activeMode().definition.name)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .allowsHitTesting(false)
                 Button(session.isListening ? "Stop" : "Start") { session.toggle() }
                     .buttonStyle(InkButtonStyle(compact: true))
                 Button(collapsed ? "Expand" : "Collapse", systemImage: collapsed ? "chevron.down" : "minus") { model.overlay.toggleCollapse() }
@@ -147,23 +159,8 @@ struct OverlayView: View {
                     .labelStyle(.iconOnly)
                     .buttonStyle(QuietButtonStyle())
                     .help("Close the overlay (⌘⇧H)")
+                }
             }
-            // The whole header is the drag handle (issue #3: the grip
-            // icon alone was a caption-sized target and the panel's
-            // movable-by-background never engaged through the hosting
-            // view, so for real users the overlay would not move).
-            // Buttons keep their clicks: a drag only starts after the
-            // pointer has actually moved. The content shape makes the
-            // spacer and label areas count as header, not just glyphs.
-            .contentShape(Rectangle())
-            .gesture(
-                DragGesture(coordinateSpace: .global)
-                    .onChanged { value in
-                        if model.overlay.dragStarted == false { model.overlay.beginDrag() }
-                        model.overlay.drag(translation: value.translation)
-                    }
-                    .onEnded { _ in model.overlay.endDrag() }
-            )
             .help("Drag to move the overlay")
 
             if !collapsed {
