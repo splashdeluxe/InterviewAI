@@ -193,14 +193,7 @@ struct GeneralSettings: View {
                 .foregroundStyle(.secondary)
         }
         Section("Shortcuts") {
-            ForEach(HotkeyCenter.shared.shortcutList, id: \.label) { row in
-                HStack {
-                    Text(row.label)
-                    Spacer()
-                    Text(row.combo)
-                        .foregroundStyle(.secondary)
-                }
-            }
+            Button("Show Keyboard Shortcuts") { ShortcutsWindow.show() }
             ForEach(HotkeyCenter.shared.failures, id: \.self) { failure in
                 Text(failure)
                     .font(.caption)
@@ -506,8 +499,8 @@ struct HelpSettings: View {
         Section("How It Works") {
             Text("1. Add your resume and the job description on the Context page.")
             Text("2. Pick a mode. Looking for Work fits most interviews.")
-            Text("3. Start Listening on the Live page, or show the overlay with ⌘⇧H and start there.")
-            Text("4. Answers stream into the overlay. ⌘1 to ⌘7 run the action row.")
+            Text("3. Start Listening on the Live page, or open the overlay and start there.")
+            Text("4. Answers stream into the overlay. Press ⌘ / for the full keyboard map.")
             Text("5. Stop when the call ends. The meeting is saved with a summary and a follow-up draft.")
         }
         Section("Privacy") {

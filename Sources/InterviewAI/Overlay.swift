@@ -480,16 +480,4 @@ final class HotkeyCenter {
         guard let model else { return }
         combos.first { $0.id == id }?.run(model)
     }
-
-    var shortcutList: [(label: String, combo: String)] {
-        var rows: [(label: String, combo: String)] = [
-            (label: "Start or stop listening", combo: "⌘⇧L"),
-            (label: "Show or hide the overlay", combo: "⌘⇧H"),
-            (label: "Screenshot the front window", combo: "⌘⇧S"),
-        ]
-        for (index, action) in AnswerAction.allCases.enumerated() {
-            rows.append((label: action.title, combo: "⌘\(index + 1)"))
-        }
-        return rows
-    }
 }

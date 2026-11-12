@@ -265,7 +265,7 @@ final class PhoneDisplay {
     <h2>Conversation</h2>
     <div id="lines"></div>
     <script>
-      const titles = ["What Should I Say","Clarify","Recap","Follow-Up","Answer","Code Hint","Brainstorm"];
+      const titles = [\(AnswerAction.allCases.map { "\"\($0.title)\"" }.joined(separator: ","))];
       const actions = document.getElementById('actions');
       titles.forEach((title, i) => {
         const b = document.createElement('button');
