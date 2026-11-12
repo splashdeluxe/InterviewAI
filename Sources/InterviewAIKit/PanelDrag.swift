@@ -36,3 +36,25 @@ public enum PanelDrag {
         return y >= contentHeight - bandHeight
     }
 }
+
+extension PanelDrag {
+    /// Breathing room around a reported control frame: a press a
+    /// few points off the visible button still counts as aiming
+    /// at the button, not at the drag surface.
+    public static let exclusionPadding: CGFloat = 6
+
+    /// Whether a press starts a drag: inside the header band and
+    /// clear of every exclusion rect. The exclusions exist because
+    /// the header's buttons are SwiftUI views, not NSControls, so
+    /// the event monitor cannot spot them in the hit chain (round
+    /// 3's blind spot: the drag worked, the header buttons were
+    /// swallowed as drags). The view therefore reports its own
+    /// button frames, and this stays a pure, testable decision.
+    /// Point and rects are AppKit content coordinates (y up).
+    public static func shouldStartDrag(point: CGPoint, contentHeight: CGFloat, exclusions: [CGRect]) -> Bool {
+        guard isInHeaderBand(y: point.y, contentHeight: contentHeight) else { return false }
+        return !exclusions.contains {
+            $0.insetBy(dx: -exclusionPadding, dy: -exclusionPadding).contains(point)
+        }
+    }
+}

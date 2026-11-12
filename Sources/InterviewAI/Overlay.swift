@@ -94,7 +94,14 @@ final class OverlayController {
                     view = current.superview
                 }
             }
-            guard PanelDrag.isInHeaderBand(y: point.y, contentHeight: content.frame.height) else { return event }
+            // The header's buttons are SwiftUI views, invisible to
+            // that walk, so the view reports their frames itself
+            // (round 4: round 3's drag worked, but it swallowed
+            // the header buttons' clicks as drags). A press on or
+            // near a reported frame is a click, never a drag.
+            let height = content.frame.height
+            let exclusions = OverlayDragExclusions.shared.appKitRects(contentHeight: height)
+            guard PanelDrag.shouldStartDrag(point: point, contentHeight: height, exclusions: exclusions) else { return event }
             self.dragStart = (mouse: NSEvent.mouseLocation, origin: panel.frame.origin)
             return nil
         }
@@ -146,6 +153,54 @@ final class OverlayController {
     }
 }
 
+/// The frames of the overlay header's buttons, reported by the
+/// view itself. The drag monitor cannot find these buttons in
+/// the AppKit hit chain (SwiftUI buttons are not NSControls), so
+/// the view measures them and the monitor stands down on any
+/// press that lands on one. Frames are stored in SwiftUI global
+/// coordinates (top-left origin); the monitor converts.
+final class OverlayDragExclusions {
+    static let shared = OverlayDragExclusions()
+    private var frames: [String: CGRect] = [:]
+
+    func report(_ frame: CGRect, for key: String) {
+        frames[key] = frame
+    }
+
+    /// The reported frames in AppKit content coordinates (y up),
+    /// ready for the monitor's hit decision.
+    func appKitRects(contentHeight: CGFloat) -> [CGRect] {
+        frames.values.map { rect in
+            CGRect(x: rect.minX, y: contentHeight - rect.maxY, width: rect.width, height: rect.height)
+        }
+    }
+}
+
+/// Measures the view's frame and reports it as a drag exclusion.
+private struct DragExclusionReporter: ViewModifier {
+    let key: String
+
+    func body(content: Content) -> some View {
+        content.background {
+            GeometryReader { proxy in
+                Color.clear
+                    .onAppear { OverlayDragExclusions.shared.report(proxy.frame(in: .global), for: key) }
+                    .onChange(of: proxy.frame(in: .global)) { _, frame in
+                        OverlayDragExclusions.shared.report(frame, for: key)
+                    }
+            }
+        }
+    }
+}
+
+extension View {
+    /// Marks a header control as click-only territory for the
+    /// overlay's drag monitor: presses here never start a drag.
+    func dragExclusion(_ key: String) -> some View {
+        modifier(DragExclusionReporter(key: key))
+    }
+}
+
 /// The overlay content: header, transcript and answer panes,
 /// action row, ask box. One material card, nothing else drawn.
 struct OverlayView: View {
@@ -176,14 +231,17 @@ struct OverlayView: View {
                     .lineLimit(1)
                 Button(session.isListening ? "Stop" : "Start") { session.toggle() }
                     .buttonStyle(InkButtonStyle(compact: true))
+                    .dragExclusion("startStop")
                 Button(collapsed ? "Expand" : "Collapse", systemImage: collapsed ? "chevron.down" : "minus") { model.overlay.toggleCollapse() }
                     .labelStyle(.iconOnly)
                     .buttonStyle(QuietButtonStyle())
                     .help(collapsed ? "Expand the overlay" : "Collapse to the header bar")
+                    .dragExclusion("collapse")
                 Button("Close", systemImage: "xmark") { model.overlay.hide() }
                     .labelStyle(.iconOnly)
                     .buttonStyle(QuietButtonStyle())
                     .help("Close the overlay (⌘⇧H)")
+                    .dragExclusion("close")
             }
             .help("Drag to move the overlay")
 

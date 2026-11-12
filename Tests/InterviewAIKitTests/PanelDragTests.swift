@@ -43,3 +43,25 @@ func headerBandCollapsedAndOutside() {
     #expect(!PanelDrag.isInHeaderBand(y: 600, contentHeight: 520))
     #expect(!PanelDrag.isInHeaderBand(y: -5, contentHeight: 520))
 }
+
+@Test("A press on a reported button frame does not start a drag")
+func dragSkipsButtonFrames() {
+    let stopButton = CGRect(x: 400, y: 486, width: 64, height: 24)
+    #expect(!PanelDrag.shouldStartDrag(point: CGPoint(x: 420, y: 498), contentHeight: 520, exclusions: [stopButton]))
+    #expect(PanelDrag.shouldStartDrag(point: CGPoint(x: 60, y: 498), contentHeight: 520, exclusions: [stopButton]))
+}
+
+@Test("The padding around a button counts as the button")
+func dragSkipsButtonPadding() {
+    let closeButton = CGRect(x: 500, y: 486, width: 24, height: 24)
+    // 4 points left of the button's edge: inside the 6 point pad.
+    #expect(!PanelDrag.shouldStartDrag(point: CGPoint(x: 496, y: 498), contentHeight: 520, exclusions: [closeButton]))
+    // 10 points left: clear of the pad, a normal drag.
+    #expect(PanelDrag.shouldStartDrag(point: CGPoint(x: 490, y: 498), contentHeight: 520, exclusions: [closeButton]))
+}
+
+@Test("Below the header band nothing drags, exclusions or not")
+func dragOnlyInBand() {
+    #expect(!PanelDrag.shouldStartDrag(point: CGPoint(x: 60, y: 300), contentHeight: 520, exclusions: []))
+    #expect(PanelDrag.shouldStartDrag(point: CGPoint(x: 60, y: 510), contentHeight: 520, exclusions: []))
+}
