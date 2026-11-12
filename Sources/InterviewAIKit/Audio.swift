@@ -83,8 +83,10 @@ protocol AudioChanneling: AnyObject {
 }
 
 /// Two-channel capture and on-device transcription. System audio is the
-/// other side ("them"), the microphone is "me". Nothing is recorded to
-/// disk. Apple Speech tasks end on silence, so each channel rotates its
+/// other side ("them"), the microphone is "me". On its own the engine
+/// records nothing to disk; when a session hands it a
+/// SessionAudioRecorder, both channels are also written to that file.
+/// Apple Speech tasks end on silence, so each channel rotates its
 /// task after every final result or error.
 public final class AudioEngine: @unchecked Sendable {
     /// (channel, text, isFinal, audioSeconds). The last value is how many
@@ -98,6 +100,7 @@ public final class AudioEngine: @unchecked Sendable {
     private var tap: SystemAudioTap?
     private var engine: AVAudioEngine?
     private var collector: ThemCollector?
+    private var recorder: SessionAudioRecorder?
     /// The Screen Recording ask goes out at most once per launch, and
     /// only through the proper API, never as a side effect of a check.
     private var screenAskUsed = false
@@ -113,9 +116,11 @@ public final class AudioEngine: @unchecked Sendable {
     public func start(localeIdentifier: String,
                       engine engineKind: TranscriptionEngineKind = .appleSpeech,
                       whisperModel: String = "large-v3-v20240930_626MB",
-                      diarize: Bool = false) {
+                      diarize: Bool = false,
+                      recorder: SessionAudioRecorder? = nil) {
         guard !isRunning else { return }
         collector = diarize ? ThemCollector() : nil
+        self.recorder = recorder
         let emit: (String, String, Bool, Double?) -> Void = { [weak self] ch, text, final, seconds in
             self?.onSegment?(ch, text, final, seconds)
         }
@@ -154,7 +159,7 @@ public final class AudioEngine: @unchecked Sendable {
             }
             them.start()
             me.start()
-            await startSystemAudio(them: them, collector: collector)
+            await startSystemAudio(them: them, collector: collector, recorder: recorder)
             joinMicrophone(me: me)
         }
     }
@@ -196,6 +201,7 @@ public final class AudioEngine: @unchecked Sendable {
         }
         stream = nil
         tap = nil
+        recorder = nil
     }
 
     private func startMicrophone(me: AudioChanneling) {
@@ -206,8 +212,9 @@ public final class AudioEngine: @unchecked Sendable {
             onStatus?("No microphone input found.")
             return
         }
-        input.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
+        input.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, _ in
             me.append(buffer)
+            self?.recorder?.appendMe(buffer)
         }
         engine.prepare()
         self.engine = engine
@@ -218,7 +225,7 @@ public final class AudioEngine: @unchecked Sendable {
         }
     }
 
-    private func startSystemAudio(them: AudioChanneling, collector: ThemCollector?) async {
+    private func startSystemAudio(them: AudioChanneling, collector: ThemCollector?, recorder: SessionAudioRecorder?) async {
         // macOS ties the Screen Recording grant to the exact binary, so
         // a rebuilt app reads as not granted even when an older build was
         // allowed. Check without side effects first; ask once per launch
@@ -254,7 +261,7 @@ public final class AudioEngine: @unchecked Sendable {
             config.height = 2
             config.minimumFrameInterval = CMTime(value: 1, timescale: 1)
             config.showsCursor = false
-            let tap = SystemAudioTap(channel: them, collector: collector)
+            let tap = SystemAudioTap(channel: them, collector: collector, recorder: recorder)
             tap.onProblem = { [weak self] message in self?.onStatus?(message) }
             // The tap is also the stream delegate, so a stream that dies
             // mid-call reports why instead of going quiet.
@@ -355,6 +362,7 @@ final class SpeechChannel: AudioChanneling, @unchecked Sendable {
 final class SystemAudioTap: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Sendable {
     let channel: AudioChanneling
     let collector: ThemCollector?
+    let recorder: SessionAudioRecorder?
     /// Capture problems the user should see (unreadable buffers, a
     /// stream that stopped). Wired to the session status by AudioEngine.
     var onProblem: ((String) -> Void)?
@@ -366,9 +374,10 @@ final class SystemAudioTap: NSObject, SCStreamOutput, SCStreamDelegate, @uncheck
     private var failedBuffers = 0
     private var problemReported = false
 
-    init(channel: AudioChanneling, collector: ThemCollector? = nil) {
+    init(channel: AudioChanneling, collector: ThemCollector? = nil, recorder: SessionAudioRecorder? = nil) {
         self.channel = channel
         self.collector = collector
+        self.recorder = recorder
     }
 
     func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of type: SCStreamOutputType) {
@@ -378,6 +387,7 @@ final class SystemAudioTap: NSObject, SCStreamOutput, SCStreamDelegate, @uncheck
             convertedBuffers += 1
             channel.append(pcm)
             collector?.append(pcm)
+            recorder?.appendThem(pcm)
         } else {
             // A buffer that cannot be read is dropped, but not in
             // silence: if they all fail, the session status says so.

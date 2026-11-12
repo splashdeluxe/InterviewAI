@@ -1,4 +1,6 @@
 import AppKit
+import AVFoundation
+import CoreMedia
 import PDFKit
 import SwiftData
 import SwiftUI
@@ -11,6 +13,7 @@ struct LivePage: View {
     @Environment(AppModel.self) private var model
     @State private var upcomingEvents: [UpcomingEvent] = []
     @State private var calendarState = CalendarService.authorizationText()
+    @AppStorage("sessionAudio.enabled") private var saveSessionAudio = false
 
     var body: some View {
         let session = model.session
@@ -24,6 +27,11 @@ struct LivePage: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
+                    if session.audioRecordingActive {
+                        Label("Recording audio", systemImage: "record.circle")
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    }
                 }
                 Spacer()
                 modePicker
@@ -33,6 +41,9 @@ struct LivePage: View {
                 ))
                 .toggleStyle(.switch)
                 .help("Answer on your own when the other side finishes a question")
+                Toggle("Save Audio", isOn: $saveSessionAudio)
+                    .toggleStyle(.switch)
+                    .help("Save each session's audio with its meeting. Only record with everyone's consent.")
                 Button("Overlay", systemImage: "macwindow.on.rectangle") { model.overlay.toggle() }
                     .buttonStyle(QuietButtonStyle())
                     .help("Show or hide the floating overlay (⌘⇧H)")
@@ -541,7 +552,10 @@ struct MeetingsPage: View {
                 }
                 .tag(meeting.id)
                 .contextMenu {
-                    Button("Delete", role: .destructive) { context.delete(meeting) }
+                    Button("Delete", role: .destructive) {
+                        SessionAudioStore.delete(fileName: meeting.audioFileName)
+                        context.delete(meeting)
+                    }
                 }
             }
             .navigationSplitViewColumnWidth(min: 220, ideal: 280)
@@ -636,6 +650,9 @@ struct MeetingsPage: View {
                         showEventPicker = false
                     }
                 }
+                if !meeting.audioFileName.isEmpty, SessionAudioStore.exists(fileName: meeting.audioFileName) {
+                    MeetingAudioPlayer(url: SessionAudioStore.url(fileName: meeting.audioFileName))
+                }
                 Picker("View", selection: $tab) {
                     Text("Transcript").tag("Transcript")
                     Text("Notes").tag("Notes")
@@ -673,6 +690,104 @@ struct MeetingsPage: View {
         } else {
             ContentUnavailableView("No Meeting Selected", systemImage: "sidebar.right")
         }
+    }
+}
+
+/// Plays a meeting's saved session audio, recorded with the other
+/// side on the left and you on the right, and offers the file itself
+/// in Finder for anything the player cannot do.
+struct MeetingAudioPlayer: View {
+    let url: URL
+    @State private var player: AVPlayer?
+    @State private var isPlaying = false
+    @State private var isScrubbing = false
+    @State private var progress = 0.0
+    @State private var duration = 0.0
+    @State private var timeObserver: Any?
+
+    var body: some View {
+        HStack(spacing: Space.sm) {
+            Label("Session Audio", systemImage: "waveform")
+                .font(.callout.weight(.medium))
+            Button {
+                togglePlayback()
+            } label: {
+                Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
+                    .font(.title2)
+            }
+            .buttonStyle(.plain)
+            .help(isPlaying ? "Pause" : "Play")
+            Slider(value: $progress, in: 0...max(duration, 1)) { editing in
+                isScrubbing = editing
+                if !editing { seek(to: progress) }
+            }
+            Text("\(clock(progress)) / \(clock(duration))")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+            Button("Show in Finder") {
+                NSWorkspace.shared.activateFileViewerSelecting([url])
+            }
+            .buttonStyle(QuietButtonStyle())
+        }
+        .onAppear(perform: setUp)
+        .onDisappear(perform: tearDown)
+    }
+
+    private func setUp() {
+        let player = AVPlayer(url: url)
+        self.player = player
+        timeObserver = player.addPeriodicTimeObserver(
+            forInterval: CMTime(seconds: 0.25, preferredTimescale: 600),
+            queue: .main
+        ) { [weak player] time in
+            // The observer fires on the main queue, so the view's
+            // state is safe to touch inside assumeIsolated.
+            MainActor.assumeIsolated {
+                if !isScrubbing {
+                    progress = time.seconds.isFinite ? time.seconds : 0
+                }
+                if let itemDuration = player?.currentItem?.duration.seconds, itemDuration.isFinite {
+                    duration = itemDuration
+                }
+                isPlaying = player?.timeControlStatus == .playing
+            }
+        }
+    }
+
+    private func tearDown() {
+        player?.pause()
+        if let timeObserver, let player {
+            player.removeTimeObserver(timeObserver)
+        }
+        timeObserver = nil
+        player = nil
+        isPlaying = false
+    }
+
+    private func togglePlayback() {
+        guard let player else { return }
+        if isPlaying {
+            player.pause()
+            isPlaying = false
+        } else {
+            if duration > 0, progress >= duration - 0.3 {
+                seek(to: 0)
+            }
+            player.play()
+            isPlaying = true
+        }
+    }
+
+    private func seek(to seconds: Double) {
+        progress = seconds
+        player?.seek(to: CMTime(seconds: seconds, preferredTimescale: 600),
+                     toleranceBefore: .zero, toleranceAfter: .zero)
+    }
+
+    private func clock(_ seconds: Double) -> String {
+        let total = max(0, Int(seconds.rounded()))
+        return "\(total / 60):\(String(format: "%02d", total % 60))"
     }
 }
 

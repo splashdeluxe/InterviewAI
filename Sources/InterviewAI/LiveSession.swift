@@ -22,6 +22,13 @@ final class LiveSession {
     /// Its title names the saved meeting, and its id is stored on it.
     var linkedEvent: UpcomingEvent?
     var pendingScreenshot: Data?
+    /// Session audio: when the Save Session Audio setting is on, a
+    /// recorder is handed to the engine at start and the finished file
+    /// is attached to the saved meeting at stop.
+    @ObservationIgnored private var recorder: SessionAudioRecorder?
+    @ObservationIgnored private var pendingAudioName: String?
+    @ObservationIgnored private var audioWasRequested = false
+    var audioRecordingActive = false
     var autoAnswer: Bool = UserDefaults.standard.object(forKey: "session.autoAnswer") as? Bool ?? true {
         didSet { UserDefaults.standard.set(autoAnswer, forKey: "session.autoAnswer") }
     }
@@ -83,7 +90,19 @@ final class LiveSession {
         let engineKind = TranscriptionEngineKind(rawValue: UserDefaults.standard.string(forKey: "transcription.engine") ?? "parakeetUltra") ?? .parakeetUltra
         let whisperModel = UserDefaults.standard.string(forKey: "transcription.whisperModel") ?? "large-v3-v20240930_626MB"
         let diarize = UserDefaults.standard.object(forKey: "transcription.diarize") as? Bool ?? true
-        audio.start(localeIdentifier: locale, engine: engineKind, whisperModel: whisperModel, diarize: diarize)
+        audioWasRequested = UserDefaults.standard.bool(forKey: "sessionAudio.enabled")
+        var activeRecorder: SessionAudioRecorder?
+        if audioWasRequested {
+            let name = UUID().uuidString + ".m4a"
+            let candidate = SessionAudioRecorder(fileURL: SessionAudioStore.url(fileName: name))
+            if candidate.start() {
+                activeRecorder = candidate
+                pendingAudioName = name
+                audioRecordingActive = true
+            }
+        }
+        recorder = activeRecorder
+        audio.start(localeIdentifier: locale, engine: engineKind, whisperModel: whisperModel, diarize: diarize, recorder: activeRecorder)
     }
 
     func stop() {
@@ -92,11 +111,44 @@ final class LiveSession {
         settleTask?.cancel()
         audio.stop()
         status = "Stopped"
-        guard let model, !finalSegments.isEmpty else { linkedEvent = nil; return }
-        let meeting = model.saveMeeting(from: self)
-        summarize(meeting: meeting)
-        diarize(meeting: meeting)
+        let activeRecorder = recorder
+        let audioName = pendingAudioName
+        let wasRequested = audioWasRequested
+        recorder = nil
+        pendingAudioName = nil
+        audioWasRequested = false
+        audioRecordingActive = false
+        var saved: Meeting?
+        if let model, !finalSegments.isEmpty {
+            saved = model.saveMeeting(from: self)
+            if let saved {
+                summarize(meeting: saved)
+                diarize(meeting: saved)
+            }
+        }
         linkedEvent = nil
+        guard let activeRecorder, let audioName else {
+            if wasRequested, saved != nil {
+                status = "Session saved. Audio recording could not start, but the transcript is complete."
+            }
+            return
+        }
+        // The file is finalised off the main thread; the meeting only
+        // points at it once it is really on disk. A failed recording
+        // deletes its partial file and the session says so plainly.
+        activeRecorder.stop { [weak self] ok in
+            DispatchQueue.main.async {
+                if ok, let saved {
+                    saved.audioFileName = audioName
+                    try? saved.modelContext?.save()
+                } else {
+                    SessionAudioStore.delete(fileName: audioName)
+                    if saved != nil {
+                        self?.status = "Session saved. The audio recording failed, but the transcript is complete."
+                    }
+                }
+            }
+        }
     }
 
     private func receive(channel: String, text: String, isFinal: Bool, seconds: Double?) {

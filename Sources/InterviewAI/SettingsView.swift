@@ -103,6 +103,8 @@ struct GeneralSettings: View {
     @AppStorage("reading.answerFontSize") private var answerFontSize = 14.0
     @AppStorage("reading.transcriptFontSize") private var transcriptFontSize = 14.0
     @AppStorage("general.showInDock") private var showInDock = true
+    @AppStorage("sessionAudio.enabled") private var saveSessionAudio = false
+    @State private var storedAudioSize = SessionAudioStore.formattedTotal()
 
     var body: some View {
         Section("Live Session") {
@@ -123,6 +125,20 @@ struct GeneralSettings: View {
                 Text("Overlay opacity")
             }
         }
+        Section("Session Audio") {
+            Toggle("Save Session Audio", isOn: $saveSessionAudio)
+                .onChange(of: saveSessionAudio) { _, _ in
+                    storedAudioSize = SessionAudioStore.formattedTotal()
+                }
+            Text("With this on, each session is saved as an audio file with its meeting, so you can listen back to a moment and check the transcript. Only record with everyone's consent.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            LabeledContent("Stored audio", value: storedAudioSize)
+            Text("Audio stays on this Mac. Deleting a meeting deletes its audio.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .onAppear { storedAudioSize = SessionAudioStore.formattedTotal() }
         Section("Phone Display") {
             Toggle("Show the session on my phone", isOn: Binding(
                 get: { model.phoneDisplayEnabled },
