@@ -63,3 +63,19 @@ public enum BuiltInModes {
         all.first { $0.id == id } ?? general
     }
 }
+
+/// The section titles inside a mode's notes template. A template is
+/// plain text: a heading line, an optional placeholder bullet, a
+/// blank line, then the next heading. The titles are what the
+/// Modes page lists as the mode's note sections, the same way
+/// Metaview lists a template's sections. Placeholder bullets and
+/// blank lines are not sections.
+public enum ModeSections {
+    public static func titles(from template: String) -> [String] {
+        template.split(separator: "\n").compactMap { raw in
+            let line = raw.trimmingCharacters(in: .whitespaces)
+            if line.isEmpty || line.hasPrefix("-") { return nil }
+            return line
+        }
+    }
+}

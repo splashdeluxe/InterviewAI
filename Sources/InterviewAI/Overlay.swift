@@ -1,5 +1,6 @@
 import AppKit
 import Carbon
+import QuartzCore
 import SwiftUI
 import InterviewAIKit
 
@@ -7,14 +8,18 @@ import InterviewAIKit
 /// app keeps focus while the user reads and clicks actions here.
 /// Borderless on purpose: the system title bar gave the panel a second,
 /// mismatched chrome (and traffic lights that did nothing useful on a
-/// panel), so the view draws the whole surface itself, one rounded
-/// rect with a hairline, and carries its own collapse and close
-/// buttons in the header. Dragging the header moves the panel.
+/// panel), so the view draws the whole surface itself: one thick
+/// material card with a large continuous corner and a bright top edge,
+/// the way Apple's own floating panels read. Dragging the header moves
+/// the panel (see installDragMonitor for how, and why it took three
+/// rounds).
 @Observable
 final class OverlayController {
     @ObservationIgnored weak var model: AppModel?
     @ObservationIgnored private var panel: NSPanel?
     @ObservationIgnored private var expandedHeight: CGFloat = 520
+    @ObservationIgnored private var dragMonitors: [Any] = []
+    @ObservationIgnored private var dragStart: (mouse: NSPoint, origin: NSPoint)?
     var isShown = false
     var isCollapsed = false
 
@@ -40,15 +45,17 @@ final class OverlayController {
             panel.isOpaque = false
             panel.backgroundColor = .clear
             panel.hasShadow = true
-            panel.isMovable = true
-            panel.isMovableByWindowBackground = true
-            let host = MovableHostingView(rootView: AnyView(OverlayView().environment(model)))
-            panel.contentView = host
+            // The drag monitor below is the one moving mechanism;
+            // the panel's own movable flags stay off so nothing
+            // competes with it.
+            panel.isMovable = false
+            panel.contentView = NSHostingView(rootView: AnyView(OverlayView().environment(model)))
             if let screen = NSScreen.main {
                 let frame = screen.visibleFrame
                 panel.setFrameOrigin(NSPoint(x: frame.maxX - 580, y: frame.maxY - 540))
             }
             self.panel = panel
+            installDragMonitor()
         }
         // The opacity the user set in Settings, General. Unset means 1.
         let stored = UserDefaults.standard.object(forKey: "overlay.opacity") as? Double
@@ -62,8 +69,53 @@ final class OverlayController {
         isShown = false
     }
 
+    /// Dragging the overlay, round 3 (issue #3). Rounds 1 and 2 both
+    /// died on event delivery inside this non-activating panel: a
+    /// SwiftUI DragGesture never tracked, and an AppKit drag view's
+    /// performDrag never fired. The buttons always worked, the drag
+    /// never did. So round 3 does not ask any view for the events at
+    /// all: a local event monitor sees every left-mouse-down in the
+    /// app before dispatch. A press in the panel's header band that
+    /// does not land on a control starts a drag; from there the
+    /// monitor moves the window by the pointer's screen-space delta
+    /// until the mouse comes up. 1:1, grab point preserved.
+    private func installDragMonitor() {
+        guard dragMonitors.isEmpty else { return }
+        let down = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
+            guard let self, let panel = self.panel, event.window === panel,
+                  let content = panel.contentView else { return event }
+            let point = event.locationInWindow
+            // A press on a control keeps its click: walk the hit
+            // chain and stand down if any view in it is a control.
+            if let hit = content.hitTest(point) {
+                var view: NSView? = hit
+                while let current = view {
+                    if current is NSControl { return event }
+                    view = current.superview
+                }
+            }
+            guard PanelDrag.isInHeaderBand(y: point.y, contentHeight: content.frame.height) else { return event }
+            self.dragStart = (mouse: NSEvent.mouseLocation, origin: panel.frame.origin)
+            return nil
+        }
+        let drag = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDragged, .leftMouseUp]) { [weak self] event in
+            guard let self, let start = self.dragStart, let panel = self.panel else { return event }
+            if event.type == .leftMouseUp {
+                self.dragStart = nil
+                return nil
+            }
+            panel.setFrameOrigin(PanelDrag.movedOrigin(
+                startOrigin: start.origin, startMouse: start.mouse, mouse: NSEvent.mouseLocation
+            ))
+            return nil
+        }
+        dragMonitors = [down, drag].compactMap { $0 }
+    }
+
     /// Collapse to the header bar, or back to the remembered height.
     /// The top edge stays put; the panel grows and shrinks downward.
+    /// Animated with a short ease, unless the system asks for
+    /// reduced motion, in which case the frame just lands.
     func toggleCollapse() {
         guard let panel else { return }
         var frame = panel.frame
@@ -79,42 +131,23 @@ final class OverlayController {
             panel.minSize = NSSize(width: 400, height: Self.collapsedHeight)
             isCollapsed = true
         }
-        panel.setFrame(frame, display: true)
+        if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+            panel.setFrame(frame, display: true)
+        } else {
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.25
+                // Strong ease-in-out (Emil Kowalski's curve), not
+                // the built-in: the stock curve is too weak at the
+                // start, which is the moment the eye is watching.
+                context.timingFunction = CAMediaTimingFunction(controlPoints: 0.77, 0, 0.175, 1)
+                panel.animator().setFrame(frame, display: true)
+            }
+        }
     }
 }
 
-/// The hosting view for the overlay panel. A plain NSHostingView
-/// reports that a mouse-down cannot move its window, which silently
-/// defeats the panel's movable-by-background setting: the overlay
-/// looked draggable and was not. This one says yes, so dragging any
-/// free surface of the panel moves it.
-final class MovableHostingView: NSHostingView<AnyView> {
-    override var mouseDownCanMoveWindow: Bool { true }
-}
-
-/// The overlay's drag handle, an AppKit view behind the header row.
-/// Issue #3 took two rounds: SwiftUI drag gestures do not track in a
-/// non-activating panel. The buttons always worked, the drag never
-/// did, first on the grip icon and then on the whole header. So the
-/// drag now runs through AppKit itself: performDrag takes over the
-/// tracking loop and moves the window natively, activation or not.
-/// Non-interactive header content sits above this view with hit
-/// testing off, so presses land here; the header buttons stay live
-/// above it and keep their clicks.
-final class WindowDragView: NSView {
-    override var mouseDownCanMoveWindow: Bool { true }
-
-    override func mouseDown(with event: NSEvent) {
-        window?.performDrag(with: event)
-    }
-}
-
-struct DragHandle: NSViewRepresentable {
-    func makeNSView(context: Context) -> WindowDragView { WindowDragView() }
-    func updateNSView(_ nsView: WindowDragView, context: Context) {}
-}
-
-/// The overlay content: transcript left, answer right, action row, ask box.
+/// The overlay content: header, transcript and answer panes,
+/// action row, ask box. One material card, nothing else drawn.
 struct OverlayView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -125,30 +158,22 @@ struct OverlayView: View {
         let session = model.session
         let collapsed = model.overlay.isCollapsed
         VStack(spacing: Space.sm) {
-            // The AppKit drag handle fills the header behind the row;
-            // everything in the row that is not a control has hit
-            // testing off, so a press on the grip, the status, or the
-            // mode name lands on the handle and moves the window.
-            ZStack {
-                DragHandle()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                HStack(spacing: Space.sm) {
-                Image(systemName: "line.3.horizontal")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.tertiary)
-                    .allowsHitTesting(false)
+            // The whole header is the drag handle (the controller's
+            // event monitor does the moving); it carries no grip
+            // glyph, because a surface you can simply grab does not
+            // need to advertise a handle.
+            HStack(spacing: Space.sm) {
                 StatusDot(listening: session.isListening)
-                    .allowsHitTesting(false)
+                    .fixedSize()
                 Text(session.status)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(.callout.weight(.medium))
                     .lineLimit(1)
-                    .allowsHitTesting(false)
+                    .layoutPriority(1)
                 Spacer()
                 Text(model.activeMode().definition.name)
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                    .allowsHitTesting(false)
+                    .lineLimit(1)
                 Button(session.isListening ? "Stop" : "Start") { session.toggle() }
                     .buttonStyle(InkButtonStyle(compact: true))
                 Button(collapsed ? "Expand" : "Collapse", systemImage: collapsed ? "chevron.down" : "minus") { model.overlay.toggleCollapse() }
@@ -159,23 +184,30 @@ struct OverlayView: View {
                     .labelStyle(.iconOnly)
                     .buttonStyle(QuietButtonStyle())
                     .help("Close the overlay (⌘⇧H)")
-                }
             }
             .help("Drag to move the overlay")
 
             if !collapsed {
                 HSplitView {
-                    transcriptList
-                        .frame(minWidth: 160)
-                    answerView
-                        .frame(minWidth: 200)
+                    VStack(alignment: .leading, spacing: Space.xs) {
+                        paneLabel("Transcript")
+                        transcriptList
+                    }
+                    .frame(minWidth: 160)
+                    VStack(alignment: .leading, spacing: Space.xs) {
+                        paneLabel("Answer")
+                        answerView
+                    }
+                    .frame(minWidth: 200)
                 }
 
                 actionRow
 
-                HStack(spacing: Space.sm) {
+                // One inset field for asking, with its two actions
+                // inside the field's trailing edge.
+                HStack(spacing: Space.xs) {
                     TextField("Ask anything", text: $askText)
-                        .textFieldStyle(.roundedBorder)
+                        .textFieldStyle(.plain)
                         .onSubmit(sendAsk)
                     Button("Screenshot", systemImage: "camera") { session.captureScreenshot() }
                         .labelStyle(.iconOnly)
@@ -186,18 +218,39 @@ struct OverlayView: View {
                         .buttonStyle(QuietButtonStyle())
                         .help("Ask with the live transcript and your context files")
                 }
+                .padding(.horizontal, Space.sm)
+                .padding(.vertical, Space.xs)
+                .background {
+                    RoundedRectangle(cornerRadius: Radius.card + 2, style: .continuous)
+                        .fill(Color.primary.opacity(0.06))
+                }
             }
         }
         .padding(Space.md)
         .frame(minWidth: 400, minHeight: collapsed ? OverlayController.collapsedHeight : 320)
         .background {
             RoundedRectangle(cornerRadius: Radius.overlay, style: .continuous)
-                .fill(.ultraThinMaterial)
+                .fill(.regularMaterial)
         }
         .overlay {
+            // The bright top edge: light catching the material.
             RoundedRectangle(cornerRadius: Radius.overlay, style: .continuous)
-                .strokeBorder(Surface.hairline, lineWidth: 1)
+                .strokeBorder(
+                    LinearGradient(
+                        colors: [Color.white.opacity(0.22), Color.white.opacity(0.05)],
+                        startPoint: .top, endPoint: .bottom
+                    ),
+                    lineWidth: 1
+                )
         }
+    }
+
+    /// A small caps label over a pane: wayfinding, not chrome.
+    private func paneLabel(_ title: String) -> some View {
+        Text(title.uppercased())
+            .font(.system(size: 10, weight: .semibold))
+            .tracking(0.6)
+            .foregroundStyle(.tertiary)
     }
 
     private func sendAsk() {

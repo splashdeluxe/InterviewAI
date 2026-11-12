@@ -31,7 +31,7 @@ enum Surface {
 enum Radius {
     static let control: CGFloat = 6
     static let card: CGFloat = 8
-    static let overlay: CGFloat = 12
+    static let overlay: CGFloat = 20
 }
 
 enum Motion {
