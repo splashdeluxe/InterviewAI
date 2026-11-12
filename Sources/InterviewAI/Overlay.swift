@@ -208,6 +208,7 @@ struct OverlayView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage("reading.transcriptFontSize") private var transcriptFontSize = 14.0
     @State private var askText = ""
+    @State private var transcriptExpanded = false
 
     var body: some View {
         let session = model.session
@@ -246,18 +247,15 @@ struct OverlayView: View {
             .help("Drag to move the overlay")
 
             if !collapsed {
-                HSplitView {
-                    VStack(alignment: .leading, spacing: Space.xs) {
-                        paneLabel("Transcript")
-                        transcriptList
-                    }
-                    .frame(minWidth: 160)
-                    VStack(alignment: .leading, spacing: Space.xs) {
-                        paneLabel("Answer")
-                        answerView
-                    }
-                    .frame(minWidth: 200)
+                transcriptStrip
+
+                Divider()
+
+                VStack(alignment: .leading, spacing: Space.xs) {
+                    paneLabel("Answer")
+                    answerView
                 }
+                .frame(maxHeight: .infinity)
 
                 actionRow
 
@@ -324,6 +322,57 @@ struct OverlayView: View {
         )
     }
 
+    /// The transcript as a supporting strip (overlay rework, direction
+    /// A, picked by Nils 2026-11-12): the newest lines only, quiet
+    /// colours, so the answer below stays the hero. The chevron opens
+    /// the full transcript when he wants the history; it never takes
+    /// the panel over.
+    private var transcriptStrip: some View {
+        VStack(alignment: .leading, spacing: Space.xs) {
+            HStack(spacing: Space.xs) {
+                paneLabel("Transcript")
+                Spacer()
+                Button(transcriptExpanded ? "Show less" : "Show all",
+                       systemImage: transcriptExpanded ? "chevron.up" : "chevron.down") {
+                    transcriptExpanded.toggle()
+                }
+                .labelStyle(.iconOnly)
+                .buttonStyle(QuietButtonStyle())
+                .help(transcriptExpanded ? "Show only the latest lines" : "Show the full transcript")
+            }
+            if transcriptExpanded {
+                transcriptList
+                    .frame(height: 168)
+            } else if model.session.displaySegments.isEmpty {
+                Text("Nothing heard yet. Start listening, then speak or let the other side speak.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            } else {
+                VStack(alignment: .leading, spacing: Space.xs) {
+                    ForEach(model.session.displaySegments.suffix(3)) { segment in
+                        stripLine(segment)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .animation(Motion.contentSwap(reduceMotion: reduceMotion), value: transcriptExpanded)
+    }
+
+    /// One quiet line of the strip: who spoke, then what they said.
+    /// A line still being heard reads lighter than a finished one.
+    private func stripLine(_ segment: TranscriptSegment) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: Space.xs) {
+            Text(segment.speakerName)
+                .font(.system(size: max(transcriptFontSize - 2, 10), weight: .semibold))
+                .foregroundStyle(segment.channel == "me" ? Palette.accent : Color.secondary)
+            Text(segment.displayText)
+                .font(.system(size: max(transcriptFontSize - 1, 11)))
+                .foregroundStyle(segment.isFinal ? Color.primary.opacity(0.8) : Color.secondary)
+                .lineLimit(2)
+        }
+    }
+
     private var answerView: some View {
         HStack(spacing: 0) {
             AnswerRail(active: model.session.isAnswering || !model.session.answer.isEmpty)
@@ -356,11 +405,13 @@ struct OverlayView: View {
     }
 
     private var actionRow: some View {
-        HStack(spacing: Space.xs) {
-            ForEach(Array(AnswerAction.allCases.enumerated()), id: \.offset) { index, action in
-                Button(action.title) { model.session.runAction(action, typedQuestion: nil) }
-                    .buttonStyle(ChipButtonStyle())
-                    .help("\(action.title) (⌘\(index + 1))")
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: Space.xs) {
+                ForEach(Array(AnswerAction.allCases.enumerated()), id: \.offset) { index, action in
+                    Button(action.title) { model.session.runAction(action, typedQuestion: nil) }
+                        .buttonStyle(ChipButtonStyle())
+                        .help("\(action.title) (⌘\(index + 1))")
+                }
             }
         }
     }
