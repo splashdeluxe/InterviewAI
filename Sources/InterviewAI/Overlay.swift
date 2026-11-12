@@ -365,7 +365,7 @@ struct OverlayView: View {
         HStack(alignment: .firstTextBaseline, spacing: Space.xs) {
             Text(segment.speakerName)
                 .font(.system(size: max(transcriptFontSize - 2, 10), weight: .semibold))
-                .foregroundStyle(segment.channel == "me" ? Palette.accent : Color.secondary)
+                .foregroundStyle(segment.channel == "me" ? Palette.accent : Color(light: 0x5F6D52, dark: 0xCBD4BE))
             Text(segment.displayText)
                 .font(.system(size: max(transcriptFontSize - 1, 11)))
                 .foregroundStyle(segment.isFinal ? Color.primary.opacity(0.8) : Color.secondary)

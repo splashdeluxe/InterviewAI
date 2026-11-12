@@ -49,7 +49,7 @@ sed -e "s/__BUILD__/$(date +%Y%m%d%H%M)/" "$here/Info.plist.in" > "$app/Contents
 if [[ -d "$here/Icon/AppIcon.icon" ]]; then
   car="$here/Resources/Assets.car"
   if [[ ! -f "$car" || -n "$(find "$here/Icon/AppIcon.icon" -newer "$car" | head -1)" ]]; then
-    "$here/tools/make_icon.sh" || echo "icon build skipped (actool unavailable); installing without the icon"
+    /bin/zsh "$here/tools/make_icon.sh" || echo "icon build failed; installing with the committed icon"
   fi
   # A compiled AppIcon.icns is committed as the fallback, so the app
   # keeps its icon even when actool never ran on this Mac.

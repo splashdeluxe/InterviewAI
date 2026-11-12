@@ -12,12 +12,13 @@ import SwiftUI
 /// content swaps are short and fade only, and keyboard actions never
 /// animate. Nothing enters from scale(0), nothing eases in.
 enum Surface {
-    /// The window ground: a blue-grey one step off the panel white.
-    static let canvas = Color(light: 0xF2F4F7, dark: 0x17181A)
-    /// Panels on the canvas.
-    static let panel = Color(light: 0xFFFFFF, dark: 0x232427)
+    /// The window ground: a Cool Blue wash in light mode, a deep plum
+    /// step under the panels in dark mode (trend palette, 2026-11-12).
+    static let canvas = Color(light: 0xE8F4FC, dark: 0x241419)
+    /// Panels on the canvas. Plum Noir itself in dark mode.
+    static let panel = Color(light: 0xFFFFFF, dark: 0x351E28)
     /// A filled control or a selected row.
-    static let inset = Color(light: 0xE9EDF1, dark: 0x2C2C2E)
+    static let inset = Color(light: 0xDCEBF5, dark: 0x422630)
     /// The near-black of the one primary action. White in dark mode.
     static let ink = Color(light: 0x141414, dark: 0xF2F2F7)
     /// Text on the ink action.

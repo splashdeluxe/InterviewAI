@@ -32,6 +32,13 @@ struct Theme: Identifiable, Hashable {
 
     static let all: [Theme] = [
         Theme(id: "system", name: "System", shades: nil),
+        // The 2026 trend palette (Nils's pick, 2026-11-12): five named
+        // colors from one card, shades derived per color for text use.
+        Theme(id: "persimmon", name: "Persimmon", shades: .init(light: 0xFFB09E, base: 0xFF5C34, deep: 0xC23A15)),
+        Theme(id: "wasabi", name: "Wasabi", shades: .init(light: 0xF4F9A8, base: 0xE9F056, deep: 0x757F10), darkText: true),
+        Theme(id: "jade", name: "Jade", shades: .init(light: 0xCBD4BE, base: 0xAEB8A0, deep: 0x5F6D52), darkText: true),
+        Theme(id: "coolblue", name: "Cool Blue", shades: .init(light: 0xD7EFFF, base: 0x5BA4CF, deep: 0x2F6E99)),
+        Theme(id: "plumnoir", name: "Plum Noir", shades: .init(light: 0xC4A3B2, base: 0x5C3547, deep: 0x351E28)),
         Theme(id: "blue", name: "Blue", shades: .init(light: 0x7CC0FF, base: 0x0A84FF, deep: 0x0064D2)),
         Theme(id: "indigo", name: "Indigo", shades: .init(light: 0xA5ADFF, base: 0x5E6AD2, deep: 0x4650B8)),
         Theme(id: "violet", name: "Violet", shades: .init(light: 0xB9A6FF, base: 0x7B5CFF, deep: 0x6342E6)),
@@ -51,9 +58,10 @@ struct Theme: Identifiable, Hashable {
 final class ThemeStore {
     static let shared = ThemeStore()
 
-    /// The accent the app ships with. Keep "system", so the app follows the
-    /// accent people chose for their Mac.
-    static let defaultID = "system"
+    /// The accent the app ships with: Persimmon, from the 2026 trend
+    /// palette (Nils's pick, 2026-11-12). Anyone can switch in Settings;
+    /// "system" still follows the Mac accent.
+    static let defaultID = "persimmon"
 
     /// The app's brand color, or nil. Like Apple's own apps, the brand shows
     /// only while the Mac's accent is Multicolor (System Settings >

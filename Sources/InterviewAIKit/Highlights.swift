@@ -3,7 +3,7 @@ import Foundation
 /// Splits an answer into runs the UI can style: the terms the model
 /// bolded, and the figures (amounts, percents, plain numbers). Both
 /// read as the keywords worth catching mid-sentence, so the app can
-/// wash them in yellow when the Highlight Keywords setting is on.
+/// wash them in wasabi when the Highlight Keywords setting is on.
 /// Pure string work, no model call.
 public enum AnswerHighlight {
     public enum Style: Equatable, Sendable {

@@ -3,7 +3,7 @@ import InterviewAIKit
 
 /// The answer readout. Renders the model's bold terms semibold and,
 /// when Highlight Keywords is on, washes the bold terms and the
-/// figures (amounts, percents, numbers) in yellow so the point lands
+/// figures (amounts, percents, numbers) in wasabi so the point lands
 /// at a glance. The size follows the Font Size setting.
 struct AnswerTextView: View {
     let text: String
@@ -25,9 +25,9 @@ struct AnswerTextView: View {
                 break
             case .emphasis:
                 piece.font = .system(size: answerFontSize).weight(.semibold)
-                if highlightKeywords { piece.backgroundColor = Color.yellow.opacity(0.45) }
+                if highlightKeywords { piece.backgroundColor = Color(hex: 0xE9F056).opacity(0.45) }
             case .figure:
-                if highlightKeywords { piece.backgroundColor = Color.yellow.opacity(0.45) }
+                if highlightKeywords { piece.backgroundColor = Color(hex: 0xE9F056).opacity(0.45) }
             }
             out += piece
         }
