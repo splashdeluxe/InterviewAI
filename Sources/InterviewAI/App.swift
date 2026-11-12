@@ -105,13 +105,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Task { @MainActor in
             WhatsNewLaunch.run()
             UpdateChecker.shared.checkIfStale()
-            // Nils's order (2026-11-12): the Support sheet is live, it
-            // opens on every launch like the Vorssaint sample he sent.
-            // Skipped for the dev tools (snapshots, seed data, store
-            // overrides), which launch the app with APP_* env set.
+            // Nils's call (2026-11-12): the Support sheet stays live but
+            // rare, not on every open. It shows at most once every 14
+            // days, and the stamp is written only when it actually
+            // shows. Skipped for the dev tools (snapshots, seed data,
+            // store overrides), which launch the app with APP_* env set.
             let env = ProcessInfo.processInfo.environment
             if env["APP_SNAPSHOT"] == nil, env["APP_SEED"] == nil, env["APP_STORE"] == nil {
-                AboutWindow.show(.support)
+                let defaults = UserDefaults.standard
+                let lastShown = defaults.double(forKey: "support.lastShownAt")
+                let fourteenDays: TimeInterval = 14 * 24 * 60 * 60
+                if lastShown == 0 || Date().timeIntervalSince1970 - lastShown >= fourteenDays {
+                    defaults.set(Date().timeIntervalSince1970, forKey: "support.lastShownAt")
+                    AboutWindow.show(.support)
+                }
             }
         }
     }

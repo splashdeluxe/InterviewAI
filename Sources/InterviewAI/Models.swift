@@ -29,6 +29,9 @@ final class Meeting {
     /// The session's saved audio in SessionAudioStore, when Save
     /// Session Audio was on for the call. Empty means no recording.
     var audioFileName: String = ""
+    /// Automatic Suggestions given during the session, JSON-encoded
+    /// [Suggestion]. Empty when none were given or the feature was off.
+    var suggestionsJSON: String = ""
     var uuid: UUID = UUID()
 
     init(title: String, modeID: String, modeName: String) {
@@ -38,6 +41,7 @@ final class Meeting {
     }
 
     var segments: [TranscriptSegment] { TranscriptSegment.decode(transcriptJSON) }
+    var suggestionList: [Suggestion] { Suggestion.decode(suggestionsJSON) }
 }
 
 @Model

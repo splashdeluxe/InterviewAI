@@ -1,10 +1,16 @@
 import AppKit
 import SwiftUI
 
+extension Notification.Name {
+    /// Help, Replay setup asks the main window to show the wizard again.
+    static let replayOnboarding = Notification.Name("InterviewAI.replayOnboarding")
+}
+
 struct ContentView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.openSettings) private var openSettings
     @AppStorage("onboarding.completed") private var onboardingCompleted = false
+    @AppStorage("onboarding.v2.completed") private var onboardingV2Completed = false
     @State private var showOnboarding = false
 
     var body: some View {
@@ -16,11 +22,23 @@ struct ContentView: View {
                 .background(Surface.canvas)
         }
         .onAppear {
-            if !onboardingCompleted { showOnboarding = true }
+            // The v2 wizard is for fresh installs only: an install
+            // that finished the 1.10.0 card never sees it. The dev
+            // tools (snapshots, seed data) never see it either; that
+            // skip is explicit here, not seeding luck.
+            let env = ProcessInfo.processInfo.environment
+            if !onboardingV2Completed, !onboardingCompleted,
+               env["APP_SNAPSHOT"] == nil, env["APP_SEED"] == nil {
+                showOnboarding = true
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .replayOnboarding)) { _ in
+            showOnboarding = true
         }
         .sheet(isPresented: $showOnboarding) {
             OnboardingView {
                 onboardingCompleted = true
+                onboardingV2Completed = true
                 showOnboarding = false
             }
             .interactiveDismissDisabled()

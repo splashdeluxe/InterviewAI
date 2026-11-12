@@ -137,6 +137,19 @@ struct LivePage: View {
                     .panelSurface()
                     .clipShape(RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
                     .frame(minHeight: 160)
+
+                    if !session.suggestions.isEmpty {
+                        VStack(alignment: .leading, spacing: Space.sm) {
+                            Text("Suggestions")
+                                .font(.headline)
+                            ForEach(Array(session.suggestions.enumerated()), id: \.offset) { _, tip in
+                                SuggestionRow(tip: tip)
+                            }
+                        }
+                        .padding(Space.md)
+                        .panelSurface()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                 }
                 .padding(Space.sm)
                 .frame(minWidth: 280)
@@ -246,6 +259,31 @@ struct LivePage: View {
 
 /// One transcript line: who spoke, then the line. When a translation
 /// exists it is the line, with the original in small type under it.
+/// One automatic suggestion as a quiet row: kind tag, the line
+/// itself, and the short why under it. Used on the Live page while a
+/// session runs and again in the meeting it saved into.
+struct SuggestionRow: View {
+    let tip: Suggestion
+
+    var body: some View {
+        HStack(alignment: .top, spacing: Space.sm) {
+            Text(tip.kind.tag)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 92, alignment: .leading)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(tip.text)
+                    .font(.callout)
+                if !tip.why.isEmpty {
+                    Text(tip.why)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+}
+
 struct TranscriptRow: View {
     let segment: TranscriptSegment
     var font: Font = .body
@@ -652,6 +690,16 @@ struct MeetingsPage: View {
                 }
                 if !meeting.audioFileName.isEmpty, SessionAudioStore.exists(fileName: meeting.audioFileName) {
                     MeetingAudioPlayer(url: SessionAudioStore.url(fileName: meeting.audioFileName))
+                }
+                if !meeting.suggestionList.isEmpty {
+                    VStack(alignment: .leading, spacing: Space.sm) {
+                        Text("Suggestions from this session")
+                            .font(.headline)
+                        ForEach(Array(meeting.suggestionList.enumerated()), id: \.offset) { _, tip in
+                            SuggestionRow(tip: tip)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 Picker("View", selection: $tab) {
                     Text("Transcript").tag("Transcript")

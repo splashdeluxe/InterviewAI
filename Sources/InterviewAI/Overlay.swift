@@ -297,6 +297,10 @@ struct OverlayView: View {
                 }
                 .frame(maxHeight: .infinity)
 
+                if let tip = session.currentSuggestion {
+                    suggestionCard(tip)
+                }
+
                 actionRow
 
                 // One inset field for asking, with its two actions
@@ -352,6 +356,46 @@ struct OverlayView: View {
     private func sendAsk() {
         model.session.ask(askText)
         askText = ""
+    }
+
+    /// The newest automatic suggestion, as a slim card under the
+    /// answer. Copy takes the line as it stands, Ask sends it into
+    /// the ask flow, the x dismisses it. A newer tip replaces it.
+    private func suggestionCard(_ tip: Suggestion) -> some View {
+        VStack(alignment: .leading, spacing: Space.xs) {
+            HStack(spacing: Space.xs) {
+                paneLabel("Suggestion · \(tip.kind.tag)")
+                Spacer()
+                Button("Copy", systemImage: "doc.on.doc") {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(tip.text, forType: .string)
+                }
+                .labelStyle(.iconOnly)
+                .buttonStyle(QuietButtonStyle())
+                .help("Copy the tip")
+                Button("Ask", systemImage: "paperplane") { model.session.useSuggestion() }
+                    .labelStyle(.iconOnly)
+                    .buttonStyle(QuietButtonStyle())
+                    .help("Ask about this tip")
+                Button("Dismiss", systemImage: "xmark") { model.session.dismissSuggestion() }
+                    .labelStyle(.iconOnly)
+                    .buttonStyle(QuietButtonStyle())
+                    .help("Dismiss this tip")
+            }
+            Text(tip.text)
+                .font(.callout.weight(.medium))
+            if !tip.why.isEmpty {
+                Text(tip.why)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(Space.sm)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background {
+            RoundedRectangle(cornerRadius: Radius.card + 2, style: .continuous)
+                .fill(Color.primary.opacity(0.06))
+        }
     }
 
     private var transcriptList: some View {

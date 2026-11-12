@@ -29,6 +29,14 @@ final class LiveSession {
     @ObservationIgnored private var pendingAudioName: String?
     @ObservationIgnored private var audioWasRequested = false
     var audioRecordingActive = false
+    /// Automatic Suggestions (Hedy plan, phase 2): proactive tips the
+    /// engine offers while the session runs. Every kept tip lands in
+    /// `suggestions`; the newest one is also the overlay card until it
+    /// is dismissed or replaced.
+    var suggestions: [Suggestion] = []
+    var currentSuggestion: Suggestion?
+    @ObservationIgnored private var suggestionTask: Task<Void, Never>?
+    @ObservationIgnored private var lastSuggestionCycle: Date?
     var autoAnswer: Bool = UserDefaults.standard.object(forKey: "session.autoAnswer") as? Bool ?? true {
         didSet { UserDefaults.standard.set(autoAnswer, forKey: "session.autoAnswer") }
     }
@@ -103,12 +111,24 @@ final class LiveSession {
         }
         recorder = activeRecorder
         audio.start(localeIdentifier: locale, engine: engineKind, whisperModel: whisperModel, diarize: diarize, recorder: activeRecorder)
+        suggestions = []
+        currentSuggestion = nil
+        lastSuggestionCycle = nil
+        suggestionTask?.cancel()
+        suggestionTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(15))
+                guard !Task.isCancelled, let self, isListening else { return }
+                await runSuggestionCycleIfDue()
+            }
+        }
     }
 
     func stop() {
         guard isListening else { return }
         isListening = false
         settleTask?.cancel()
+        suggestionTask?.cancel()
         audio.stop()
         status = "Stopped"
         let activeRecorder = recorder
@@ -122,6 +142,10 @@ final class LiveSession {
         if let model, !finalSegments.isEmpty {
             saved = model.saveMeeting(from: self)
             if let saved {
+                if !suggestions.isEmpty {
+                    saved.suggestionsJSON = Suggestion.encode(suggestions)
+                    try? saved.modelContext?.save()
+                }
                 summarize(meeting: saved)
                 diarize(meeting: saved)
             }
@@ -339,6 +363,60 @@ final class LiveSession {
                 self?.answerError = "Screenshot failed. Grant Screen Recording in the Permissions tab. (\(error.localizedDescription))"
             }
         }
+    }
+
+    // MARK: Automatic Suggestions
+
+    /// One suggestion cycle, when the engine's gate says one is due:
+    /// the live model drafts up to three candidate tips from the
+    /// recent transcript, the strict filter keeps at most one (the
+    /// Deep model does the filtering when Dual-Brain is on, through
+    /// DeepWork). A cycle that finds nothing, or fails anywhere, is
+    /// silent: a suggestion is a bonus, never an error in the answer
+    /// area. Cycles also skip while an answer is streaming, so the
+    /// local model is never asked for two things at once.
+    private func runSuggestionCycleIfDue() async {
+        guard !isAnswering, let startedAt, let model else { return }
+        let frequency = SuggestionFrequency(rawValue: UserDefaults.standard.string(forKey: "suggestions.frequency") ?? "") ?? .balanced
+        let themCount = finalSegments.filter { $0.channel == "them" }.count
+        guard SuggestionEngine.shouldEvaluate(now: Date.now, sessionStartedAt: startedAt, lastCycleAt: lastSuggestionCycle, frequency: frequency, themSegmentCount: themCount) else { return }
+        lastSuggestionCycle = Date.now
+        let window = Array(finalSegments.suffix(14))
+        let transcript = TranscriptSegment.plainText(window)
+        let previous = suggestions.map(\.text)
+        do {
+            let draft = try await Brain.complete(
+                config: ProviderSettings.config(), apiKey: ProviderSettings.apiKey,
+                system: SuggestionPrompts.draftSystem,
+                user: SuggestionPrompts.draftUser(modeName: model.activeMode().definition.name, transcript: transcript, previousTips: previous),
+                maxTokens: 350
+            )
+            let fresh = SuggestionEngine.parseCandidates(draft).filter { !SuggestionEngine.isDuplicate($0.text, previous: previous) }
+            guard !fresh.isEmpty else { return }
+            let outcome = try await DeepWork.complete(
+                system: SuggestionPrompts.scoreSystem(frequency: frequency),
+                user: SuggestionPrompts.scoreUser(candidates: fresh, transcript: transcript),
+                maxTokens: 60
+            )
+            guard let pick = SuggestionEngine.parsePick(outcome.text, candidates: fresh) else { return }
+            suggestions.append(pick)
+            let showCard = UserDefaults.standard.object(forKey: "suggestions.overlayCard") as? Bool ?? true
+            if showCard { currentSuggestion = pick }
+        } catch {
+            // Silent by design, see the note above.
+        }
+    }
+
+    func dismissSuggestion() {
+        currentSuggestion = nil
+    }
+
+    /// The card's follow-up tap: the tip becomes the question, so the
+    /// model works it out against the live transcript and context.
+    func useSuggestion() {
+        guard let tip = currentSuggestion else { return }
+        currentSuggestion = nil
+        ask(tip.text)
     }
 
     // MARK: Summary

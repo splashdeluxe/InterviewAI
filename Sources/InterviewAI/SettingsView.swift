@@ -105,6 +105,8 @@ struct GeneralSettings: View {
     @AppStorage("general.showInDock") private var showInDock = true
     @AppStorage("sessionAudio.enabled") private var saveSessionAudio = false
     @State private var storedAudioSize = SessionAudioStore.formattedTotal()
+    @AppStorage("suggestions.frequency") private var suggestionFrequency = "balanced"
+    @AppStorage("suggestions.overlayCard") private var suggestionOverlayCard = true
 
     var body: some View {
         Section("Live Session") {
@@ -139,6 +141,17 @@ struct GeneralSettings: View {
                 .foregroundStyle(.secondary)
         }
         .onAppear { storedAudioSize = SessionAudioStore.formattedTotal() }
+        Section("Automatic Suggestions") {
+            Picker("Frequency", selection: $suggestionFrequency) {
+                ForEach(SuggestionFrequency.allCases, id: \.rawValue) { frequency in
+                    Text(frequency.label).tag(frequency.rawValue)
+                }
+            }
+            Toggle("Show as overlay card", isOn: $suggestionOverlayCard)
+            Text("While you listen, InterviewAI quietly drafts coaching tips in the background and keeps only the ones worth your attention: a question to ask, a follow up, a detail you might have missed. Balanced starts after about two minutes and offers one roughly every two and a half minutes. Tips also land on the Live page and save with the meeting.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
         Section("Phone Display") {
             Toggle("Show the session on my phone", isOn: Binding(
                 get: { model.phoneDisplayEnabled },
@@ -501,6 +514,14 @@ struct HelpSettings: View {
         }
         Section("Privacy") {
             Text("Transcription is on-device. Context files and meetings stay in a local database. The only data that leaves this Mac is the prompt sent to the provider you picked, with your key or to your local model.")
+        }
+        Section("Setup") {
+            Text("The first-run wizard: language, what you are here for, permissions, your material, and a short tour. Run it again any time; it changes nothing until you pick something.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+            Button("Replay setup") {
+                NotificationCenter.default.post(name: .replayOnboarding, object: nil)
+            }
         }
     }
 }
