@@ -95,8 +95,6 @@ struct IntelligencePage: View {
     private var header: some View {
         HStack(alignment: .top, spacing: Space.lg) {
             VStack(alignment: .leading, spacing: Space.xs) {
-                Text("Profile")
-                    .font(.title3.weight(.semibold))
                 Text("One profile for the role you are chasing. It grounds every live answer.")
                     .font(.callout)
                     .foregroundStyle(.secondary)

@@ -678,100 +678,323 @@ struct MeetingsPage: View {
 
 // MARK: Modes
 
+/// The Modes library, shaped after Metaview's template library
+/// (studied 2026-11-12 at Nils's request): grouped list with
+/// search on the left, a detail that follows the SELECTION on the
+/// right. Selecting never changes the live mode; "Use" does, the
+/// way Metaview separates browsing a template from setting it as
+/// the default. Built-ins are read-only and carry a Customize
+/// action that copies them into an editable mode of your own.
 struct ModesPage: View {
     @Environment(AppModel.self) private var model
     @Environment(\.modelContext) private var context
-    @State private var newName = ""
+    @State private var selectedID: String?
+    @State private var searchText = ""
+
+    private var effectiveSelection: String { selectedID ?? model.activeModeID }
 
     var body: some View {
         HSplitView {
-            VStack(alignment: .leading, spacing: Space.sm) {
-                Text("Modes").font(.headline)
-                ForEach(BuiltInModes.all) { mode in
-                    modeRow(id: mode.id, name: mode.name, builtIn: true)
-                }
-                ForEach(model.customModes(), id: \.uuid) { custom in
-                    modeRow(id: custom.idString, name: custom.name, builtIn: false)
-                }
-                Divider()
-                HStack {
-                    TextField("New mode name", text: $newName)
-                    Button("Add Mode") {
-                        let custom = CustomMode(name: newName.isEmpty ? "My Mode" : newName, promptText: "You help me. Keep answers short and concrete.")
-                        context.insert(custom)
-                        try? context.save()
-                        model.activeModeID = custom.idString
-                        newName = ""
-                    }
-                }
-                Spacer()
-            }
-            .padding(Space.md)
-            .frame(minWidth: 220)
-
+            modeList
+                .frame(minWidth: 240)
             modeDetail
-                .frame(minWidth: 320)
+                .frame(minWidth: 340)
         }
         .navigationTitle("Modes")
     }
 
-    private func modeRow(id: String, name: String, builtIn: Bool) -> some View {
-        HStack {
-            Text(name)
-            Spacer()
-            if model.activeModeID == id {
-                Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(Palette.accentText)
-            } else {
-                Button("Use") { model.activeModeID = id }
-                    .buttonStyle(QuietButtonStyle())
+    // MARK: List
+
+    private var modeList: some View {
+        VStack(alignment: .leading, spacing: Space.sm) {
+            Button("New Mode", systemImage: "plus") { createMode() }
+                .buttonStyle(InkButtonStyle())
+            TextField("Search modes", text: $searchText)
+                .textFieldStyle(.roundedBorder)
+            ScrollView {
+                VStack(alignment: .leading, spacing: Space.xs) {
+                    groupLabel("Built-in")
+                    ForEach(filteredBuiltIns) { mode in
+                        modeRow(id: mode.id, name: mode.name, subtitle: firstLine(of: mode.prompt))
+                    }
+                    groupLabel("Your Modes")
+                    let customs = filteredCustoms
+                    if customs.isEmpty {
+                        Text(searchText.isEmpty
+                             ? "No modes of your own yet. Customize a built-in to start."
+                             : "No mode matches your search.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, Space.sm)
+                    }
+                    ForEach(customs, id: \.uuid) { custom in
+                        modeRow(id: custom.idString, name: custom.name, subtitle: firstLine(of: custom.promptText))
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
-        .padding(.vertical, Space.xs)
-        .padding(.horizontal, Space.sm)
-        .background(model.activeModeID == id ? Surface.inset : Color.clear,
-                    in: RoundedRectangle(cornerRadius: Radius.control, style: .continuous))
+        .padding(Space.md)
     }
+
+    private var filteredBuiltIns: [ModeDefinition] {
+        guard !searchText.isEmpty else { return BuiltInModes.all }
+        return BuiltInModes.all.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
+    }
+
+    private var filteredCustoms: [CustomMode] {
+        guard !searchText.isEmpty else { return model.customModes() }
+        return model.customModes().filter { $0.name.localizedCaseInsensitiveContains(searchText) }
+    }
+
+    private func groupLabel(_ title: String) -> some View {
+        Text(title.uppercased())
+            .font(.system(size: 10, weight: .semibold))
+            .tracking(0.6)
+            .foregroundStyle(.tertiary)
+            .padding(.top, Space.xs)
+            .padding(.horizontal, Space.sm)
+    }
+
+    private func modeRow(id: String, name: String, subtitle: String) -> some View {
+        Button {
+            selectedID = id
+        } label: {
+            HStack(spacing: Space.sm) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(name)
+                        .font(.callout.weight(.medium))
+                        .lineLimit(1)
+                    if !subtitle.isEmpty {
+                        Text(subtitle)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+                Spacer()
+                if model.activeModeID == id {
+                    Text("Active")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Palette.accentText)
+                        .padding(.horizontal, Space.sm)
+                        .padding(.vertical, 2)
+                        .background(Palette.accent.opacity(0.14), in: Capsule())
+                }
+            }
+            .padding(.vertical, Space.xs)
+            .padding(.horizontal, Space.sm)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(effectiveSelection == id ? Surface.inset : Color.clear,
+                        in: RoundedRectangle(cornerRadius: Radius.control, style: .continuous))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: Detail
 
     @ViewBuilder
     private var modeDetail: some View {
-        let active = model.activeMode()
-        VStack(alignment: .leading, spacing: Space.md) {
-            Text(active.definition.name).font(.title3.weight(.semibold))
-            Text("Prompt").font(.headline)
-            if let custom = model.customModes().first(where: { $0.idString == active.definition.id }) {
-                TextEditor(text: Binding(get: { custom.promptText }, set: { custom.promptText = $0 }))
-                    .font(.body)
-                    .frame(minHeight: 120)
-                Button("Delete This Mode", role: .destructive) {
-                    context.delete(custom)
-                    try? context.save()
-                    model.activeModeID = "general"
-                }
+        let id = effectiveSelection
+        if let custom = model.customModes().first(where: { $0.idString == id }) {
+            customDetail(custom)
+        } else {
+            builtInDetail(BuiltInModes.mode(id: id))
+        }
+    }
+
+    private func detailHeader<Actions: View>(name: String, isActive: Bool, id: String, @ViewBuilder actions: () -> Actions) -> some View {
+        HStack(spacing: Space.sm) {
+            Text(name).font(.title3.weight(.semibold)).lineLimit(1)
+            Spacer()
+            if isActive {
+                Label("Active", systemImage: "checkmark.circle.fill")
+                    .font(.callout.weight(.medium))
+                    .foregroundStyle(Palette.accentText)
             } else {
-                ScrollView {
-                    Text(active.definition.prompt)
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(Space.sm)
+                Button("Use") {
+                    model.activeModeID = id
+                    selectedID = id
                 }
-                .background(Surface.inset, in: RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
-                .frame(minHeight: 80)
-                Text("Built-in prompts are fixed. Duplicate the idea as your own mode to change it.")
+                .buttonStyle(InkButtonStyle(compact: true))
+            }
+            actions()
+        }
+    }
+
+    private func builtInDetail(_ mode: ModeDefinition) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: Space.md) {
+                detailHeader(name: mode.name, isActive: model.activeModeID == mode.id, id: mode.id) {
+                    Button("Customize") { customize(mode) }
+                        .buttonStyle(QuietButtonStyle())
+                        .help("Copy this built-in into your own editable mode")
+                }
+                Text(firstSentence(of: mode.prompt))
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                sectionLabel("Prompt")
+                Text(mode.prompt)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(Space.sm)
+                    .background(Surface.inset, in: RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
+                Text("Built-in prompts are fixed. Customize this mode to change it.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                sectionLabel("Note Sections")
+                sectionList(ModeSections.titles(from: mode.notesTemplate))
+                contextEditor(forModeID: mode.id)
             }
-            Text("Custom Context for This Mode").font(.headline)
+            .padding(Space.margin)
+        }
+    }
+
+    private func customDetail(_ custom: CustomMode) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: Space.md) {
+                // The name field IS the header (Metaview's shape):
+                // no second title printed underneath it.
+                HStack(spacing: Space.sm) {
+                    TextField("Mode name", text: Binding(get: { custom.name }, set: { custom.name = $0; try? context.save() }))
+                        .textFieldStyle(.plain)
+                        .font(.title3.weight(.semibold))
+                    Spacer()
+                    if model.activeModeID == custom.idString {
+                        Label("Active", systemImage: "checkmark.circle.fill")
+                            .font(.callout.weight(.medium))
+                            .foregroundStyle(Palette.accentText)
+                    } else {
+                        Button("Use") {
+                            model.activeModeID = custom.idString
+                            selectedID = custom.idString
+                        }
+                        .buttonStyle(InkButtonStyle(compact: true))
+                    }
+                    Button("Duplicate") { duplicate(custom) }
+                        .buttonStyle(QuietButtonStyle())
+                    Button("Delete", role: .destructive) { delete(custom) }
+                        .buttonStyle(QuietButtonStyle())
+                }
+                sectionLabel("Prompt")
+                TextEditor(text: Binding(get: { custom.promptText }, set: { custom.promptText = $0; try? context.save() }))
+                    .font(.body)
+                    .frame(minHeight: 120)
+                    .padding(Space.xs)
+                    .background(Surface.inset, in: RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
+                sectionLabel("Note Sections")
+                TextEditor(text: Binding(get: { custom.notesTemplate }, set: { custom.notesTemplate = $0; try? context.save() }))
+                    .font(.body)
+                    .frame(minHeight: 80)
+                    .padding(Space.xs)
+                    .background(Surface.inset, in: RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
+                Text("One section per line. A new meeting in this mode starts its notes with these sections.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                contextEditor(forModeID: custom.idString)
+            }
+            .padding(Space.margin)
+        }
+    }
+
+    private func contextEditor(forModeID id: String) -> some View {
+        VStack(alignment: .leading, spacing: Space.sm) {
+            sectionLabel("Custom Context for This Mode")
             TextEditor(text: Binding(
-                get: { model.activeMode().context },
-                set: { model.setModeContext($0, forModeID: model.activeModeID) }
+                get: {
+                    if let custom = model.customModes().first(where: { $0.idString == id }) {
+                        return custom.customContext
+                    }
+                    return UserDefaults.standard.string(forKey: "mode.context.\(id)") ?? ""
+                },
+                set: { model.setModeContext($0, forModeID: id) }
             ))
             .font(.body)
+            .frame(minHeight: 80)
             Text("Salary bands, crib notes, names, anything the answers should know in this mode.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
-        .padding(Space.margin)
+    }
+
+    private func sectionLabel(_ title: String) -> some View {
+        Text(title.uppercased())
+            .font(.system(size: 10, weight: .semibold))
+            .tracking(0.6)
+            .foregroundStyle(.tertiary)
+    }
+
+    private func sectionList(_ titles: [String]) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if titles.isEmpty {
+                Text("No sections. This mode starts notes blank.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .padding(.vertical, Space.xs)
+            }
+            ForEach(Array(titles.enumerated()), id: \.offset) { index, title in
+                HStack(spacing: Space.sm) {
+                    Text("\(index + 1)")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                        .frame(width: 16, alignment: .trailing)
+                    Text(title).font(.callout)
+                    Spacer()
+                }
+                .padding(.vertical, Space.xs)
+                if index < titles.count - 1 {
+                    Divider()
+                }
+            }
+        }
+    }
+
+    // MARK: Actions
+
+    private func createMode() {
+        let custom = CustomMode(name: "New Mode", promptText: "", notesTemplate: "Notes\n-\n")
+        context.insert(custom)
+        try? context.save()
+        selectedID = custom.idString
+        searchText = ""
+    }
+
+    private func customize(_ mode: ModeDefinition) {
+        let custom = CustomMode(name: "\(mode.name) (Copy)", promptText: mode.prompt, notesTemplate: mode.notesTemplate)
+        context.insert(custom)
+        try? context.save()
+        selectedID = custom.idString
+        searchText = ""
+    }
+
+    private func duplicate(_ custom: CustomMode) {
+        let copy = CustomMode(name: "\(custom.name) (Copy)", promptText: custom.promptText, notesTemplate: custom.notesTemplate)
+        copy.customContext = custom.customContext
+        context.insert(copy)
+        try? context.save()
+        selectedID = copy.idString
+        searchText = ""
+    }
+
+    private func delete(_ custom: CustomMode) {
+        let wasActive = model.activeModeID == custom.idString
+        context.delete(custom)
+        try? context.save()
+        if wasActive { model.activeModeID = "general" }
+        selectedID = model.activeModeID
+    }
+
+    // MARK: Text helpers
+
+    private func firstLine(of text: String) -> String {
+        text.split(separator: "\n").first.map(String.init) ?? ""
+    }
+
+    private func firstSentence(of text: String) -> String {
+        let line = firstLine(of: text)
+        guard let end = line.firstIndex(of: ".") else { return line }
+        return String(line[...end])
     }
 }
 
@@ -787,7 +1010,6 @@ struct ContextPage: View {
         VStack(alignment: .leading, spacing: Space.md) {
             HStack {
                 VStack(alignment: .leading, spacing: Space.xs) {
-                    Text("Context").font(.title3.weight(.semibold))
                     Text("Files that ground your answers. Pinned files go into every answer. Others are picked by how well they match the question.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
@@ -892,7 +1114,6 @@ struct AskPage: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Space.md) {
-            Text("Ask").font(.title3.weight(.semibold))
             Text("Ask across your past meetings and context files. Everything is searched on this Mac.")
                 .font(.callout)
                 .foregroundStyle(.secondary)

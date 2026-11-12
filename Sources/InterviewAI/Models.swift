@@ -70,13 +70,15 @@ final class ContextFile {
 final class CustomMode {
     var name: String
     var promptText: String = ""
+    var notesTemplate: String = ""
     var customContext: String = ""
     var createdAt: Date = Date.now
     var uuid: UUID = UUID()
 
-    init(name: String, promptText: String) {
+    init(name: String, promptText: String, notesTemplate: String = "") {
         self.name = name
         self.promptText = promptText
+        self.notesTemplate = notesTemplate
     }
 
     var idString: String { "custom-\(uuid.uuidString)" }
@@ -239,7 +241,7 @@ final class AppModel {
     /// The active mode as a definition plus its custom context.
     func activeMode() -> (definition: ModeDefinition, context: String) {
         if let custom = customModes().first(where: { $0.idString == activeModeID }) {
-            return (ModeDefinition(id: custom.idString, name: custom.name, prompt: custom.promptText, notesTemplate: ""), custom.customContext)
+            return (ModeDefinition(id: custom.idString, name: custom.name, prompt: custom.promptText, notesTemplate: custom.notesTemplate), custom.customContext)
         }
         let definition = BuiltInModes.mode(id: activeModeID)
         return (definition, UserDefaults.standard.string(forKey: "mode.context.\(definition.id)") ?? "")
