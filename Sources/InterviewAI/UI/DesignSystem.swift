@@ -19,6 +19,13 @@ enum Surface {
     static let panel = Color(light: 0xFFFFFF, dark: 0x351E28)
     /// A filled control or a selected row.
     static let inset = Color(light: 0xDCEBF5, dark: 0x422630)
+    /// The resting fill of a button: white in light mode (it pops on the
+    /// Cool Blue canvas and reads by its border on white panels), a clear
+    /// two-step lift over the plum panel in dark mode. Buttons filled
+    /// with `inset` vanished into the trend surfaces (2026-11-12).
+    static let control = Color(light: 0xFFFFFF, dark: 0x57384A)
+    /// The border that carries a control on a same-tone ground.
+    static let controlBorder = Color(light: 0x141414, dark: 0xFFFFFF).opacity(0.16)
     /// The near-black of the one primary action. White in dark mode.
     static let ink = Color(light: 0x141414, dark: 0xF2F2F7)
     /// Text on the ink action.
@@ -150,10 +157,10 @@ struct QuietButtonStyle: ButtonStyle {
                 .foregroundStyle(.primary)
                 .padding(.horizontal, Space.sm)
                 .padding(.vertical, Space.xs)
-                .background(configuration.isPressed ? Surface.inset : Color.clear,
+                .background(configuration.isPressed ? Surface.inset : Surface.control,
                             in: RoundedRectangle(cornerRadius: Radius.control, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: Radius.control, style: .continuous)
-                    .strokeBorder(Surface.hairline, lineWidth: 1))
+                    .strokeBorder(Surface.controlBorder, lineWidth: 1))
                 .opacity(isEnabled ? 1 : 0.45)
                 .scaleEffect(configuration.isPressed ? 0.97 : 1)
                 .animation(Motion.press, value: configuration.isPressed)
@@ -181,8 +188,10 @@ struct ChipButtonStyle: ButtonStyle {
                 .font(.callout)
                 .padding(.horizontal, Space.sm)
                 .padding(.vertical, Space.xs)
-                .background(selected ? Palette.accent.opacity(0.14) : Surface.inset,
+                .background(selected ? Palette.accent.opacity(0.14) : Surface.control,
                             in: RoundedRectangle(cornerRadius: Radius.control, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: Radius.control, style: .continuous)
+                    .strokeBorder(selected ? Palette.accent.opacity(0.35) : Surface.controlBorder, lineWidth: 1))
                 .opacity(isEnabled ? 1 : 0.45)
                 .scaleEffect(configuration.isPressed ? 0.97 : 1)
                 .animation(Motion.press, value: configuration.isPressed)

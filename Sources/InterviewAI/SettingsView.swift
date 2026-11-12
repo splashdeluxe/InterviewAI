@@ -216,7 +216,6 @@ struct ProvidersSettings: View {
     @State private var tavilyDraft = ""
     @State private var tavilySaved = false
     @State private var tavilySaveFailed = false
-    @State private var testResult: String?
 
     var body: some View {
         Section("Model Provider") {
@@ -226,7 +225,7 @@ struct ProvidersSettings: View {
             }
             .onChange(of: kind) { _, newKind in
                 // Swap the defaults when the fields still hold the other
-                // provider's defaults, so Test Connection works at once.
+                // provider's defaults, so the fields are ready to use at once.
                 if newKind == "openAICompatible", baseURL == "http://localhost:11434" {
                     baseURL = "https://api.openai.com"
                     modelName = "gpt-4o-mini"
@@ -244,7 +243,7 @@ struct ProvidersSettings: View {
                 .foregroundStyle(.secondary)
         }
         Section("Dual-Brain") {
-            Toggle("Dual-Brain", isOn: $dualBrain)
+            Toggle("Use a second, deeper model", isOn: $dualBrain)
             if dualBrain {
                 TextField("Deep model", text: $deepModel)
             }
@@ -289,29 +288,10 @@ struct ProvidersSettings: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
-        Section("Connection") {
-            Button("Test Connection") {
-                testResult = "Testing"
-                let config = ProviderSettings.config()
-                let apiKey = ProviderSettings.apiKey
-                Task {
-                    do {
-                        let answer = try await Brain.complete(
-                            config: config, apiKey: apiKey,
-                            system: "You reply with one word.",
-                            user: "Reply with the word ready."
-                        )
-                        testResult = "Works. The model answered: \(answer.prefix(60))"
-                    } catch {
-                        testResult = "Failed: \(error.localizedDescription)"
-                    }
-                }
-            }
-            if let testResult {
-                Text(testResult)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-            }
+        Section {
+            Text("To check the whole chain, run the Setup Test in Help.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 }
