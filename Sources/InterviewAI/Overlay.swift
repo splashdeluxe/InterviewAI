@@ -19,6 +19,7 @@ final class OverlayController {
     @ObservationIgnored private var panel: NSPanel?
     @ObservationIgnored private var expandedHeight: CGFloat = 520
     @ObservationIgnored private var dragMonitors: [Any] = []
+    @ObservationIgnored private var dragGlobalMonitor: Any?
     @ObservationIgnored private var dragStart: (mouse: NSPoint, origin: NSPoint)?
     var isShown = false
     var isCollapsed = false
@@ -79,6 +80,18 @@ final class OverlayController {
     /// does not land on a control starts a drag; from there the
     /// monitor moves the window by the pointer's screen-space delta
     /// until the mouse comes up. 1:1, grab point preserved.
+    ///
+    /// Round 5 (cross-display): the local pair only hears events
+    /// routed to this app. Because the press is swallowed, no real
+    /// drag session binds the event stream to the panel, so once the
+    /// pointer crosses onto another display the dragged events go to
+    /// whatever app owns that spot and the local monitor goes deaf
+    /// mid-drag; the panel died at the screen step between two
+    /// offset displays. While a drag runs, a global monitor covers
+    /// that stretch: it sees the events posted to other apps and
+    /// moves the panel the same way. It cannot swallow events, and
+    /// does not need to. Installed at drag start, removed at drag
+    /// end, whichever monitor sees the mouse up first.
     private func installDragMonitor() {
         guard dragMonitors.isEmpty else { return }
         let down = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
@@ -103,12 +116,13 @@ final class OverlayController {
             let exclusions = OverlayDragExclusions.shared.appKitRects(contentHeight: height)
             guard PanelDrag.shouldStartDrag(point: point, contentHeight: height, exclusions: exclusions) else { return event }
             self.dragStart = (mouse: NSEvent.mouseLocation, origin: panel.frame.origin)
+            self.beginGlobalDragMonitor()
             return nil
         }
         let drag = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDragged, .leftMouseUp]) { [weak self] event in
             guard let self, let start = self.dragStart, let panel = self.panel else { return event }
             if event.type == .leftMouseUp {
-                self.dragStart = nil
+                self.endDrag()
                 return nil
             }
             panel.setFrameOrigin(PanelDrag.movedOrigin(
@@ -117,6 +131,32 @@ final class OverlayController {
             return nil
         }
         dragMonitors = [down, drag].compactMap { $0 }
+    }
+
+    private func beginGlobalDragMonitor() {
+        endGlobalDragMonitor()
+        dragGlobalMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDragged, .leftMouseUp]) { [weak self] event in
+            guard let self, let start = self.dragStart, let panel = self.panel else { return }
+            if event.type == .leftMouseUp {
+                self.endDrag()
+                return
+            }
+            panel.setFrameOrigin(PanelDrag.movedOrigin(
+                startOrigin: start.origin, startMouse: start.mouse, mouse: NSEvent.mouseLocation
+            ))
+        }
+    }
+
+    private func endGlobalDragMonitor() {
+        if let monitor = dragGlobalMonitor {
+            NSEvent.removeMonitor(monitor)
+            dragGlobalMonitor = nil
+        }
+    }
+
+    private func endDrag() {
+        dragStart = nil
+        endGlobalDragMonitor()
     }
 
     /// Collapse to the header bar, or back to the remembered height.

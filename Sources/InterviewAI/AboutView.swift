@@ -171,7 +171,7 @@ struct AboutView: View {
 struct AboutPane: View {
     @State private var checker = UpdateChecker.shared
     @AppStorage("update.automaticCheck") private var automaticCheck = true
-    @AppStorage("update.showWhatsNewAfterUpdate") private var showWhatsNewAfterUpdate = true
+    @AppStorage("update.showWhatsNewAfterUpdate") private var showWhatsNewAfterUpdate = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: Space.md) {
@@ -404,9 +404,11 @@ struct SupportPane: View {
     }
 }
 
-/// Shows the What's New section once after an update, when the
-/// setting in About is on. Called at launch; the first install only
-/// records the version and shows nothing.
+/// Records the running version at launch. It used to also show the
+/// What's New section once after an update; Nils reported the app
+/// info window popping uninvited on open and close (2026-11-12), so
+/// the auto-show is off unless he turns it on himself in About.
+/// The window still opens from the menus, never on its own.
 @MainActor
 enum WhatsNewLaunch {
     private static let seenKey = "app.lastSeenVersion"
@@ -417,7 +419,7 @@ enum WhatsNewLaunch {
         let seen = UserDefaults.standard.string(forKey: seenKey)
         UserDefaults.standard.set(current, forKey: seenKey)
         guard let seen, seen != current else { return }
-        let show = UserDefaults.standard.object(forKey: settingKey) as? Bool ?? true
+        let show = UserDefaults.standard.object(forKey: settingKey) as? Bool ?? false
         if show { AboutWindow.show(.whatsNew) }
     }
 }
@@ -445,6 +447,7 @@ enum AboutWindow {
         window.title = "About InterviewAI"
         window.contentView = NSHostingView(rootView: AboutView(initialSection: section))
         window.isReleasedWhenClosed = false
+        window.isRestorable = false
         window.center()
         let controller = NSWindowController(window: window)
         self.controller = controller
