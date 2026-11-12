@@ -1169,12 +1169,12 @@ struct AskPage: View {
         var contextText = ""
         for doc in bestMeetings { contextText += "From meeting \(doc.name):\n\(doc.text.prefix(4_000))\n\n" }
         for doc in bestFiles { contextText += "From \(doc.name):\n\(doc.text.prefix(4_000))\n\n" }
-        if contextText.isEmpty { contextText = "(Nothing in the meetings or files matches. Say so if the answer is not covered.)" }
+        if contextText.isEmpty { contextText = "(Nothing in the meetings or files matches this question. Say so plainly, in one line, and do not guess.)" }
 
         Task {
             do {
                 for try await piece in DeepWork.stream(
-                    system: "You answer questions about the user's own meetings and files. Use only the material given. Name the meeting or file a fact came from.",
+                    system: "You answer questions about the user's own meetings and files. Use only the material given, and say plainly when it does not cover the question. Name the meeting or file each fact came from. Answer directly, in the language of the question.",
                     user: "Material:\n\(contextText)\n\nQuestion: \(asked)",
                     onFallback: { deepNote = "Answered by the live model; the deep model was unavailable." }
                 ) {

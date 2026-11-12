@@ -4,11 +4,13 @@ import Foundation
 /// the user. Everything here is generated from the user's own files by
 /// the user's own provider. No layer is gated, metered, or hosted.
 public enum IntelligencePrompts {
-    private static let honesty = "Use only facts stated in the documents below. Never invent employers, dates, numbers, or skills. Where something is missing, say so plainly in one line."
+    private static let honesty = "Use only facts stated in the documents below. Never invent employers, dates, numbers, skills, or results. Where something is missing, say so plainly in one line instead of filling the gap."
 
     public static func profile(resume: String) -> (system: String, user: String) {
         (system: "You extract a structured professional profile from a resume. \(honesty)",
          user: """
+         Copy names, titles, companies, and years exactly as written.
+
          Write the profile in markdown, exactly these sections:
          ## Identity
          Name, current role, location line, one-sentence summary.
@@ -33,10 +35,12 @@ public enum IntelligencePrompts {
          Write in markdown, exactly these sections:
          ## Fit points
          Up to six bullets: the job requirement, then the matching resume
-         evidence, in first person ("I ...").
+         evidence with the number or example that proves it, in first
+         person ("I ...").
          ## Gaps, answered honestly
          Up to four bullets: the requirement with weak or no evidence, a
-         plain admission, and the closest bridging experience.
+         plain admission, and the closest bridging experience. Never dress
+         a gap up as a strength.
          ## Questions to ask them
          Three sharp questions about the role and team.
 
@@ -57,6 +61,10 @@ public enum IntelligencePrompts {
          user: """
          Company: \(company)
 
+         Two to four lines per section. If the web leads and the job
+         description disagree, trust the job description and mark the
+         lead as unverified.
+
          Write in markdown, exactly these sections:
          ## What they do
          ## The role in their world
@@ -74,8 +82,9 @@ public enum IntelligencePrompts {
     public static func coverLetter(resume: String, jobDescription: String) -> (system: String, user: String) {
         (system: "You draft a cover letter in the first person, plain and specific, no flattery and no filler. \(honesty)",
          user: """
-         One page at most. Opening line names the role and the strongest
-         matching evidence. Middle: two short paragraphs of evidence.
+         One page at most, ready to send. Open with the role and the
+         strongest matching evidence, not with "I am writing to apply".
+         Middle: two short paragraphs of evidence.
          Close: availability and a plain sign-off with the name from the
          resume. No placeholders in brackets.
 

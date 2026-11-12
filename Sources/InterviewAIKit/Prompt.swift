@@ -32,13 +32,13 @@ public enum PromptBuilder {
     public static let contextCharBudget = 24_000
 
     public static func systemPrompt(modePrompt: String, answerLanguage: String? = nil) -> String {
-        var prompt = modePrompt + "\n\nRules: use only facts from the context and the conversation. If a fact is not there, do not invent it. Keep answers speakable and short unless I ask for detail."
+        var prompt = modePrompt + "\n\nRules: Use only facts from the context and the conversation. If a fact is not there, do not invent it. Answer as me, in first person, ready to say out loud: no introduction, no explanation of the answer, no offer to help. Keep it short and speakable unless I ask for detail."
         if let answerLanguage, !answerLanguage.isEmpty {
             // The context and the profile are usually in the user's
             // language, the call in the other side's. Without this rule
             // a small model answers in whichever language the context
             // is written in, not the language of the conversation.
-            prompt += "\n\nAnswer language: write every answer in \(answerLanguage), even when the context, my notes, or the documents are in another language. Names, figures, and quoted facts stay exactly as they are."
+            prompt += "\n\nAnswer language: write every answer in \(answerLanguage). The documents and my notes may be in another language; that changes nothing. Names, figures, and quoted facts stay exactly as they are."
         }
         return prompt
     }
@@ -85,7 +85,7 @@ public enum PromptBuilder {
             parts.append("Conversation so far:\n" + TranscriptSegment.plainText(Array(recent)))
         }
 
-        var task = action?.instruction ?? "Answer the last question from the other side."
+        var task = action?.instruction ?? "Answer the last question from the other side directly, as me, in first person, ready to say out loud."
         if let typedQuestion, !typedQuestion.isEmpty {
             task += "\n\nMy question: \(typedQuestion)"
         } else if action != nil, !question.isEmpty {
@@ -95,7 +95,7 @@ public enum PromptBuilder {
             task += "\n\nThe other side just said: \"\(question)\""
         }
         if screenshotNote {
-            task += "\n\nA screenshot of my screen is attached. Use what it shows."
+            task += "\n\nA screenshot of my screen is attached. Use what it shows, including any text or code on it."
         }
         if let answerLanguage, !answerLanguage.isEmpty {
             // Restated at the very end, where a small model weights an
@@ -134,6 +134,8 @@ public enum PromptBuilder {
 
         Use only facts from the transcript and my notes. Keep every name, number, date, and figure exactly as said. Never invent a decision, a deadline, or an owner. If something was discussed but not settled, it belongs under Open questions, not Decisions.
 
+        The transcript labels the other side as "Them" and me as "Me". Keep who said what straight: never credit me with their words or them with mine, and never swap roles. A person's role counts only as the transcript or the attendee list states it.
+
         Write the notes in markdown, with exactly these sections, in this order:
 
         ## Overview
@@ -146,14 +148,14 @@ public enum PromptBuilder {
         Only decisions actually made, one bullet each. Leave this section out entirely if nothing was decided.
 
         ## Action items
-        One bullet per task, written as: task, owner in brackets if a person was named, deadline if one was named. Leave this section out entirely if there are no tasks.
+        One bullet per task, written as: task, owner in brackets if a person was named, deadline if one was named. An agreed next step or timeline belongs here or in the Overview; never report one as missing when it was named. Leave this section out entirely if there are no tasks.
 
         ## Open questions
         Anything raised and left unanswered or undecided, one bullet each. Leave this section out entirely if there are none.
 
         Write only the notes. Start directly with "## Overview". Do not repeat any part of these instructions.
 
-        Then write a line with only ===, and after it a short follow-up message I can send, in my voice, thanking them and restating the next step.
+        Then write a line with only ===, and after it a short follow-up message I can send, in my voice, thanking them and restating the next step. Name the concrete next step and timing if they were agreed; if none was agreed, propose one politely.
 
         My notes:
         \(notes.isEmpty ? "(none)" : notes)
@@ -219,6 +221,6 @@ public enum TranslationPrompts {
     public static let languages = ["English", "German", "Russian", "Indonesian", "Spanish"]
 
     public static func system(target: String) -> String {
-        "You translate spoken interview lines into \(target). Output only the translation, nothing else: no quotes, no notes, no original text. Keep names, numbers, and technical terms exact. If the line is already in \(target), return it unchanged."
+        "You translate spoken interview lines into \(target). Output only the translation: no quotes, no notes, no original text. Keep names, numbers, and technical terms exact, and keep the speaker's tone and tense. If the line is already in \(target), return it unchanged."
     }
 }

@@ -93,13 +93,13 @@ public enum AnswerAction: String, CaseIterable, Sendable {
     /// What the model is told to do, in plain words.
     public var instruction: String {
         switch self {
-        case .whatToSay: "Tell me exactly what to say next, word for word, in first person, ready to speak out loud."
-        case .clarify: "Give me one short clarifying question to ask, plus one sentence on why it helps."
-        case .recap: "Recap what has been said so far: the key points, any numbers, and anything I agreed to."
-        case .followUp: "Give me two or three good follow-up questions I can ask now, each one line."
-        case .answer: "Answer the last question from the other side directly and completely, in first person, ready to speak."
-        case .codeHint: "Give me a hint for the coding problem on screen or in the conversation: the approach and the key step, not the full solution."
-        case .brainstorm: "Give me two or three approaches with their trade-offs, starting simple and ending with the strongest one."
+        case .whatToSay: "Tell me exactly what to say next, word for word, in first person, ready to speak out loud. Start with the words I say, no introduction."
+        case .clarify: "Give me one short clarifying question to ask, word for word, plus one sentence on why it helps."
+        case .recap: "Recap what has been said so far: the key points, every number mentioned, and anything I agreed to. Short bullets, in the order it happened."
+        case .followUp: "Give me two or three good follow-up questions I can ask now, one per line, each ready to ask exactly as written."
+        case .answer: "Answer the last question from the other side directly and completely, in first person, ready to speak. Start with the answer itself, no introduction."
+        case .codeHint: "Give me a hint for the coding problem on screen or in the conversation: the approach and the key step, not the full solution. Speakable in under a minute."
+        case .brainstorm: "Give me two or three approaches with their trade-offs, starting with the simplest and ending with the strongest. One or two lines each."
         }
     }
 
