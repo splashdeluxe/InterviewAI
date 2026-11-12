@@ -48,7 +48,15 @@ struct LivePage: View {
                     .buttonStyle(QuietButtonStyle())
                     .help("Show or hide the floating overlay (⌘⇧H)")
                 Button(session.isListening ? "Stop" : "Start Listening", systemImage: session.isListening ? "stop.circle" : "waveform") {
-                    session.toggle()
+                    if session.isListening {
+                        session.stop()
+                    } else {
+                        // Setup first: what is this call, is it an
+                        // appointment or not, which mode, save the
+                        // audio. The sheet is what keeps a random call
+                        // from being saved as a birthday.
+                        session.setupRequested = true
+                    }
                 }
                 .buttonStyle(InkButtonStyle())
                 .help("Start or stop listening (⌘⇧L)")
@@ -56,10 +64,29 @@ struct LivePage: View {
             .padding(.horizontal, Space.margin)
             .padding(.vertical, Space.md)
 
+            if session.isListening, let warning = session.otherSideWarning {
+                HStack(alignment: .top, spacing: Space.sm) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                    Text(warning)
+                        .font(.caption)
+                    Spacer()
+                }
+                .padding(.horizontal, Space.margin)
+                .padding(.vertical, Space.sm)
+                .background(Color.orange.opacity(0.08))
+            }
+
             calendarBar
                 .background(Surface.panel)
                 .overlay(alignment: .top) { Rectangle().fill(Surface.hairline).frame(height: 1) }
                 .overlay(alignment: .bottom) { Rectangle().fill(Surface.hairline).frame(height: 1) }
+                .sheet(isPresented: Binding(
+                    get: { session.setupRequested },
+                    set: { session.setupRequested = $0 }
+                )) {
+                    SessionSetupView()
+                }
 
             HSplitView {
                 VStack(alignment: .leading, spacing: Space.sm) {

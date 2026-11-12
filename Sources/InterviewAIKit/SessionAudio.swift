@@ -66,6 +66,10 @@ public final class SessionAudioRecorder: @unchecked Sendable {
     private var failed = false
     private var pendingThem: [Float] = []
     private var pendingMe: [Float] = []
+    /// Frames actually written to the file. Zero at stop means capture
+    /// never delivered anything, which is a failure, not an empty
+    /// recording worth keeping.
+    private var wroteFrames = 0
 
     private let monoTarget = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16_000, channels: 1, interleaved: false)!
     private let stereoTarget = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16_000, channels: 2, interleaved: true)!
@@ -133,9 +137,7 @@ public final class SessionAudioRecorder: @unchecked Sendable {
             guard let self, self.file != nil, !self.failed else { return }
             if channel == "them" { self.pendingThem.append(contentsOf: floats) }
             else { self.pendingMe.append(contentsOf: floats) }
-            if min(self.pendingThem.count, self.pendingMe.count) >= 4096 {
-                self.pump(final: false)
-            }
+            self.pumpAvailable()
         }
     }
 
@@ -165,29 +167,55 @@ public final class SessionAudioRecorder: @unchecked Sendable {
         return Array(UnsafeBufferPointer(start: samples, count: Int(out.frameLength)))
     }
 
-    /// Queue only. Writes the paired samples as interleaved stereo:
-    /// them on the left, me on the right. A final pump pairs everything
-    /// left over and pads the shorter side with silence.
-    private func pump(final: Bool) {
-        guard let file, !failed else { return }
-        let frames = final
-            ? max(pendingThem.count, pendingMe.count)
-            : min(pendingThem.count, pendingMe.count)
-        guard frames > 0,
-              let out = AVAudioPCMBuffer(pcmFormat: stereoTarget, frameCapacity: AVAudioFrameCount(frames)),
+    /// Queue only. Writes pending samples as interleaved stereo: them
+    /// on the left, me on the right, the shorter side padded with
+    /// silence. Writes happen in bounded chunks, never in one giant
+    /// buffer: the first version paired only when both sides had
+    /// samples and flushed everything at stop, so a call whose other
+    /// side never reached this Mac (a phone call next to it) buffered
+    /// the whole session in memory and failed on the final write,
+    /// deleting a recording that should have been kept.
+    private func writeFrames(_ count: Int) {
+        guard let file, !failed, count > 0,
+              let out = AVAudioPCMBuffer(pcmFormat: stereoTarget, frameCapacity: AVAudioFrameCount(count)),
               let data = out.floatChannelData?[0] else {
-            if final { failed = true }
+            failed = true
             return
         }
-        out.frameLength = AVAudioFrameCount(frames)
-        for index in 0..<frames {
+        out.frameLength = AVAudioFrameCount(count)
+        for index in 0..<count {
             data[index * 2] = index < pendingThem.count ? pendingThem[index] : 0
             data[index * 2 + 1] = index < pendingMe.count ? pendingMe[index] : 0
         }
-        pendingThem.removeFirst(min(frames, pendingThem.count))
-        pendingMe.removeFirst(min(frames, pendingMe.count))
-        if ExtAudioFileWrite(file, UInt32(frames), out.mutableAudioBufferList) != noErr {
+        pendingThem.removeFirst(min(count, pendingThem.count))
+        pendingMe.removeFirst(min(count, pendingMe.count))
+        if ExtAudioFileWrite(file, UInt32(count), out.mutableAudioBufferList) != noErr {
             failed = true
+        } else {
+            wroteFrames += count
+        }
+    }
+
+    /// Write what can be written now: paired chunks while both sides
+    /// have samples, and any one-sided excess beyond a second, so a
+    /// silent channel never holds the other side's audio hostage in
+    /// memory for the whole session.
+    private func pumpAvailable() {
+        while min(pendingThem.count, pendingMe.count) >= 4096 {
+            writeFrames(4096)
+            if failed { return }
+        }
+        let excess = pendingThem.count - pendingMe.count
+        if abs(excess) > 16_000 {
+            writeFrames(abs(excess) - 8_192)
+        }
+    }
+
+    /// Flush everything left at stop, in bounded chunks.
+    private func pumpFinal() {
+        while !pendingThem.isEmpty || !pendingMe.isEmpty {
+            writeFrames(min(16_384, max(pendingThem.count, pendingMe.count)))
+            if failed { return }
         }
     }
 
@@ -203,11 +231,11 @@ public final class SessionAudioRecorder: @unchecked Sendable {
         queue.async { [weak self] in
             guard let self else { box.completion(false); return }
             guard self.file != nil else { box.completion(false); return }
-            if !self.failed { self.pump(final: true) }
+            if !self.failed { self.pumpFinal() }
             let ref = self.file
             self.file = nil
             if let ref { ExtAudioFileDispose(ref) }
-            var ok = !self.failed
+            var ok = !self.failed && self.wroteFrames > 0
             if ok {
                 let size = (try? FileManager.default.attributesOfItem(atPath: self.fileURL.path))?[.size] as? NSNumber
                 ok = (size?.int64Value ?? 0) > 0

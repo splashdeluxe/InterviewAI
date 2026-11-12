@@ -245,6 +245,7 @@ extension View {
 /// action row, ask box. One material card, nothing else drawn.
 struct OverlayView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.openWindow) private var openWindow
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage("reading.transcriptFontSize") private var transcriptFontSize = 14.0
     @State private var askText = ""
@@ -270,9 +271,22 @@ struct OverlayView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
-                Button(session.isListening ? "Stop" : "Start") { session.toggle() }
-                    .buttonStyle(InkButtonStyle(compact: true))
-                    .dragExclusion("startStop")
+                Button(session.isListening ? "Stop" : "Start") {
+                    if session.isListening {
+                        session.stop()
+                    } else {
+                        // Starting goes through the setup sheet on the
+                        // main window: what is this call, which mode,
+                        // save the audio or not. Ten seconds there is
+                        // what keeps a random call from being saved
+                        // under the wrong appointment.
+                        session.setupRequested = true
+                        openWindow(id: "main")
+                        NSApp.activate(ignoringOtherApps: true)
+                    }
+                }
+                .buttonStyle(InkButtonStyle(compact: true))
+                .dragExclusion("startStop")
                 Button(collapsed ? "Expand" : "Collapse", systemImage: collapsed ? "chevron.down" : "minus") { model.overlay.toggleCollapse() }
                     .labelStyle(.iconOnly)
                     .buttonStyle(QuietButtonStyle())
@@ -285,6 +299,13 @@ struct OverlayView: View {
                     .dragExclusion("close")
             }
             .help("Drag to move the overlay")
+
+            if !collapsed, session.isListening, let warning = session.otherSideWarning {
+                Label(warning, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
 
             if !collapsed {
                 transcriptStrip

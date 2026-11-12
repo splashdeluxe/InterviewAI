@@ -128,10 +128,28 @@ public enum PromptBuilder {
     /// few lines, which produced a thin paragraph that said nothing.
     /// SummaryCleaner strips an echoed scaffold if the model parrots
     /// the instructions instead of following them.
-    public static func summaryMessage(transcript: [TranscriptSegment], notes: String, title: String = "", attendees: [String] = []) -> String {
-        """
-        Write the meeting notes for "\(title.isEmpty ? "this meeting" : title)" from the transcript and my notes below.\(attendees.isEmpty ? "" : " The people invited were: \(attendees.joined(separator: ", ")).")
-
+    public static func summaryMessage(transcript: [TranscriptSegment], notes: String, title: String = "", attendees: [String] = [], singleChannel: Bool = false) -> String {
+        var opening = "Write the meeting notes from the transcript and my notes below."
+        if !title.isEmpty {
+            // The title is the calendar's label for the time slot (or a
+            // line the user typed at setup), not a description of the
+            // call that actually happened. A wrong label framed as
+            // fact once turned a coaching call into birthday notes, so
+            // the label is handed over as a hint that the transcript
+            // outranks, never as the meeting's subject.
+            opening += "\n\nContext, as a hint only: the calendar slot for this time was called \"\(title)\""
+            if !attendees.isEmpty {
+                opening += ", and the people invited were: \(attendees.joined(separator: ", "))"
+            }
+            opening += ". A booked appointment is often not the call that actually happened. If the transcript covers something else, write about the transcript and ignore the label completely: never call the meeting a birthday, a celebration, or anything else the transcript itself does not support."
+        }
+        if singleChannel {
+            // Only the mic side was captured (the call ran on another
+            // device). Speaker attribution is impossible, so the notes
+            // must not pretend otherwise.
+            opening += "\n\nOnly my side of this call was captured; the other side's voice was not recorded on its own channel, so some of my lines answer things you cannot hear. Do not attribute statements to any other named person, do not invent the other side's words or positions, and write the notes about the topics I discussed. Where the other side clearly took part, name the topic, not their words."
+        }
+        return opening + "\n\n" + """
         Use only facts from the transcript and my notes. Keep every name, number, date, and figure exactly as said. Never invent a decision, a deadline, or an owner. If something was discussed but not settled, it belongs under Open questions, not Decisions.
 
         The transcript labels the other side as "Them" and me as "Me". Keep who said what straight: never credit me with their words or them with mine, and never swap roles. A person's role counts only as the transcript or the attendee list states it.
@@ -155,7 +173,7 @@ public enum PromptBuilder {
 
         Write only the notes. Start directly with "## Overview". Do not repeat any part of these instructions.
 
-        Then write a line with only ===, and after it a short follow-up message I can send, in my voice, thanking them and restating the next step. Name the concrete next step and timing if they were agreed; if none was agreed, propose one politely.
+        Then write a line with only ===, and after it a short follow-up message I can send, in my voice, thanking them and restating the next step. Name the concrete next step and timing if they were agreed; if none was agreed, propose one politely. Address it only to a person the transcript itself names or hears; never address it to someone who appears only in the calendar label. If the transcript names nobody, keep the greeting general.
 
         My notes:
         \(notes.isEmpty ? "(none)" : notes)

@@ -441,6 +441,42 @@ func echoCatchesOneWordDifference() {
     #expect(none == nil)
 }
 
+@Test func eventMatcherNeverPicksAllDayEvents() {
+    let base = Date(timeIntervalSince1970: 300_000)
+    func event(_ title: String, _ startOffset: TimeInterval, _ endOffset: TimeInterval, allDay: Bool = false) -> UpcomingEvent {
+        UpcomingEvent(id: title, title: title, start: base.addingTimeInterval(startOffset), end: base.addingTimeInterval(endOffset), attendees: [], calendarName: "Work", isAllDay: allDay)
+    }
+    // An all-day birthday covers the whole session and would win on
+    // overlap against everything; it must not be picked at all.
+    let birthday = event("Domi's 44th Birthday", -43_200, 43_200, allDay: true)
+    #expect(EventMatcher.pick(events: [birthday], sessionStart: base, sessionEnd: base.addingTimeInterval(1800)) == nil)
+    // A timed event during the session still wins over the all-day one.
+    let call = event("Call with Alan", 300, 2100)
+    let picked = EventMatcher.pick(events: [birthday, call], sessionStart: base, sessionEnd: base.addingTimeInterval(1800))
+    #expect(picked?.title == "Call with Alan")
+}
+
+@Test func summaryPromptFramesTheCalendarLabelAsAHint() {
+    let message = PromptBuilder.summaryMessage(
+        transcript: [TranscriptSegment(channel: "me", text: "The new club could be my regular place.", isFinal: true)],
+        notes: "", title: "Domi's 44th Birthday", attendees: [])
+    #expect(message.contains("as a hint only"))
+    #expect(message.contains("ignore the label completely"))
+    #expect(message.contains("Domi's 44th Birthday"))
+    // The follow-up may only address someone the transcript names.
+    #expect(message.contains("keep the greeting general"))
+    // No single-channel warning when both sides were captured.
+    #expect(!message.contains("Only my side of this call was captured"))
+}
+
+@Test func summaryPromptWarnsOnSingleChannel() {
+    let message = PromptBuilder.summaryMessage(
+        transcript: [TranscriptSegment(channel: "me", text: "Just me talking.", isFinal: true)],
+        notes: "", singleChannel: true)
+    #expect(message.contains("Only my side of this call was captured"))
+    #expect(message.contains("Do not attribute statements to any other named person"))
+}
+
 @Test func transcriptExportMarkdownCarriesTheMeeting() {
     let date = Date(timeIntervalSince1970: 300_000)
     let segments = [

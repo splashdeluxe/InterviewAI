@@ -21,6 +21,25 @@ final class LiveSession {
     /// The calendar event this session was started from, when it was.
     /// Its title names the saved meeting, and its id is stored on it.
     var linkedEvent: UpcomingEvent?
+    /// What the user said this session is, in the setup sheet shown
+    /// before recording starts: who it is with, what it is about. It
+    /// feeds the answer and suggestion prompts, and names the saved
+    /// meeting when no calendar event does.
+    var sessionContext = ""
+    /// The user picked "just a call" at setup: the save must not go
+    /// hunting for a calendar event to attach after the fact.
+    var eventDeclined = false
+    /// Set by the views when the user asks to start: the Live page
+    /// answers by presenting the setup sheet.
+    var setupRequested = false
+    /// Plain words on the Live page and the overlay when the other
+    /// side has never been heard: answers and suggestions follow the
+    /// other side's channel, so a silent one means both are paused,
+    /// and the user should know why instead of guessing.
+    var otherSideWarning: String?
+    /// A per-session Save Audio choice from the setup sheet, winning
+    /// over the standing setting for this one session.
+    @ObservationIgnored private var audioOverride: Bool?
     var pendingScreenshot: Data?
     /// Session audio: when the Save Session Audio setting is on, a
     /// recorder is handed to the engine at start and the finished file
@@ -61,6 +80,7 @@ final class LiveSession {
 
     var meetingTitle: String {
         if let linkedEvent { return linkedEvent.title }
+        if !sessionContext.isEmpty { return sessionContext }
         let formatter = DateFormatter()
         formatter.dateStyle = .medium
         formatter.timeStyle = .short
@@ -70,12 +90,37 @@ final class LiveSession {
 
     // MARK: Start and stop
 
-    func toggle() { isListening ? stop() : start() }
+    func toggle() {
+        if isListening {
+            stop()
+        } else {
+            // A plain start (hotkey, menu) carries no setup choices:
+            // clear whatever a previous planned start left behind.
+            linkedEvent = nil
+            sessionContext = ""
+            eventDeclined = false
+            audioOverride = nil
+            start()
+        }
+    }
 
     /// Start listening for a calendar event: the meeting takes the
     /// event's title, and the event link is saved with it.
     func start(event: UpcomingEvent) {
         linkedEvent = event
+        sessionContext = ""
+        eventDeclined = false
+        start()
+    }
+
+    /// Start with the setup sheet's choices: the event the user
+    /// confirmed (or none, for a call that is not an appointment), the
+    /// context line they typed, and this session's Save Audio choice.
+    func startPlanned(event: UpcomingEvent?, context: String, saveAudio: Bool) {
+        linkedEvent = event
+        eventDeclined = event == nil
+        sessionContext = context.trimmingCharacters(in: .whitespacesAndNewlines)
+        audioOverride = saveAudio
         start()
     }
 
@@ -98,7 +143,9 @@ final class LiveSession {
         let engineKind = TranscriptionEngineKind(rawValue: UserDefaults.standard.string(forKey: "transcription.engine") ?? "parakeetUltra") ?? .parakeetUltra
         let whisperModel = UserDefaults.standard.string(forKey: "transcription.whisperModel") ?? "large-v3-v20240930_626MB"
         let diarize = UserDefaults.standard.object(forKey: "transcription.diarize") as? Bool ?? true
-        audioWasRequested = UserDefaults.standard.bool(forKey: "sessionAudio.enabled")
+        audioWasRequested = audioOverride ?? UserDefaults.standard.bool(forKey: "sessionAudio.enabled")
+        audioOverride = nil
+        otherSideWarning = nil
         var activeRecorder: SessionAudioRecorder?
         if audioWasRequested {
             let name = UUID().uuidString + ".m4a"
@@ -119,6 +166,7 @@ final class LiveSession {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(15))
                 guard !Task.isCancelled, let self, isListening else { return }
+                checkOtherSide()
                 await runSuggestionCycleIfDue()
             }
         }
@@ -188,6 +236,7 @@ final class LiveSession {
             if let echoIndex = EchoFilter.echoIndex(text: trimmed, channel: channel, recent: finalSegments) {
                 if channel == "them" {
                     finalSegments[echoIndex].channel = "them"
+                    otherSideWarning = nil
                     if autoAnswer, isListening { scheduleAutoAnswer() }
                 }
                 return
@@ -198,6 +247,7 @@ final class LiveSession {
                 segment.startOffset = max(0, Date.now.timeIntervalSince(startedAt) - seconds)
             }
             finalSegments.append(segment)
+            if channel == "them" { otherSideWarning = nil }
             if let target = Self.translationTarget {
                 enqueueTranslation(segmentID: segment.id, text: trimmed, target: target)
             }
@@ -206,6 +256,24 @@ final class LiveSession {
             }
         } else {
             partials[channel] = text
+        }
+    }
+
+    /// Once a session is a minute and a half in and the user has
+    /// clearly been talking, a completely silent other side is not a
+    /// quiet call, it is a capture problem: the call is running on
+    /// another device, or its app is not the one playing sound here.
+    /// Auto Answer and suggestions both key off the other side's
+    /// lines, so without this warning the app looks merely dumb while
+    /// it is actually deaf. Checked on the suggestion ticker; clears
+    /// itself the moment a real other-side line lands.
+    private func checkOtherSide() {
+        guard otherSideWarning == nil, let startedAt else { return }
+        guard Date.now.timeIntervalSince(startedAt) > 90 else { return }
+        let themCount = finalSegments.filter { $0.channel == "them" }.count
+        let meCount = finalSegments.filter { $0.channel == "me" }.count
+        if themCount == 0 && meCount >= 8 {
+            otherSideWarning = "I can't hear the other side, so answers and suggestions are paused. They follow the other side's words, and none have arrived. If this call is on your phone or another device, move it to this Mac. On this Mac, check the call app is the one playing the sound."
         }
     }
 
@@ -305,6 +373,9 @@ final class LiveSession {
         let apiKey = ProviderSettings.apiKey
         let screenshot = pendingScreenshot
         var combinedContext = mode.context
+        if !sessionContext.isEmpty {
+            combinedContext = "This session: \(sessionContext)\n\n" + combinedContext
+        }
         let profile = model.profileContext()
         if !profile.isEmpty {
             combinedContext += "\n\n" + profile
@@ -388,7 +459,7 @@ final class LiveSession {
             let draft = try await Brain.complete(
                 config: ProviderSettings.config(), apiKey: ProviderSettings.apiKey,
                 system: SuggestionPrompts.draftSystem,
-                user: SuggestionPrompts.draftUser(modeName: model.activeMode().definition.name, transcript: transcript, previousTips: previous),
+                user: SuggestionPrompts.draftUser(modeName: model.activeMode().definition.name, transcript: transcript, previousTips: previous, context: sessionContext),
                 maxTokens: 350
             )
             let fresh = SuggestionEngine.parseCandidates(draft).filter { !SuggestionEngine.isDuplicate($0.text, previous: previous) }
@@ -426,6 +497,10 @@ final class LiveSession {
         let notes = meeting.notes
         let title = meeting.title
         let attendees = meeting.attendees.isEmpty ? [] : meeting.attendees.components(separatedBy: ", ")
+        // A session whose other side never arrived (the call ran on
+        // another device) has no Them lines at all: the summary must
+        // know, or it invents a second speaker's positions.
+        let singleChannel = !segments.contains { $0.channel == "them" }
         Task {
             // A summary is a document, not a spoken answer: it gets a
             // bigger token budget than the 400 the answer path uses.
@@ -434,7 +509,7 @@ final class LiveSession {
             // Dual-Brain is on, the live model when it is not.
             let outcome = try? await DeepWork.complete(
                 system: "You write meeting notes from a transcript: clear, complete, factual. Use only the transcript. No invented names, numbers, decisions, or roles.",
-                user: PromptBuilder.summaryMessage(transcript: segments, notes: notes, title: title, attendees: attendees),
+                user: PromptBuilder.summaryMessage(transcript: segments, notes: notes, title: title, attendees: attendees, singleChannel: singleChannel),
                 maxTokens: 1200
             )
             guard let outcome, !outcome.text.isEmpty else { return }

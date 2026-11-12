@@ -86,4 +86,12 @@ struct SuggestionsTests {
         #expect(Suggestion.decode("").isEmpty)
         #expect(Suggestion.decode("not json").isEmpty)
     }
+
+    @Test("The draft prompt carries the session context when setup gave one")
+    func draftCarriesContext() {
+        let withContext = SuggestionPrompts.draftUser(modeName: "General", transcript: "Them: Hi", previousTips: [], context: "Call with Alan, my coach")
+        #expect(withContext.contains("Session context: Call with Alan, my coach"))
+        let without = SuggestionPrompts.draftUser(modeName: "General", transcript: "Them: Hi", previousTips: [])
+        #expect(!without.contains("Session context:"))
+    }
 }

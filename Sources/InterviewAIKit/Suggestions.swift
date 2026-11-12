@@ -187,8 +187,16 @@ public enum SuggestionPrompts {
         no commentary. If nothing in the conversation earns a tip, reply with the single word NONE.
         """
 
-    public static func draftUser(modeName: String, transcript: String, previousTips: [String]) -> String {
-        var user = "Session type: \(modeName)\n\nRecent conversation (Them is the other side, Me is the person you coach):\n\(transcript)"
+    public static func draftUser(modeName: String, transcript: String, previousTips: [String], context: String = "") -> String {
+        var user = "Session type: \(modeName)"
+        if !context.isEmpty {
+            // What the user said this session is, at setup: who it is
+            // with and what it is about. Hedy's own guidance says this
+            // per-session context is what makes tips land; the mode
+            // name alone is too coarse.
+            user += "\nSession context: \(context)"
+        }
+        user += "\n\nRecent conversation (Them is the other side, Me is the person you coach):\n\(transcript)"
         if !previousTips.isEmpty {
             user += "\n\nTips already given this session, do not repeat these:\n" + previousTips.map { "- \($0)" }.joined(separator: "\n")
         }

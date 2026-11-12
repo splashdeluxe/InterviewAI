@@ -82,6 +82,62 @@ func recorderFailsSoft() async {
     #expect(!freshStopped)
 }
 
+@Test("Recorder keeps a one-sided session: the silent side becomes silence, not a deleted file")
+func recorderKeepsOneSidedSession() async throws {
+    // The Alan call, 2026-11-12: the other side never reached this
+    // Mac, so only mic samples ever arrived. The first recorder
+    // paired samples before writing and flushed everything at stop;
+    // a one-sided session buffered for the whole call and the
+    // recording was thrown away. Both directions are checked here.
+    let meFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 48_000, channels: 1, interleaved: false)!
+    let themFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 48_000, channels: 2, interleaved: false)!
+    for side in ["me", "them"] {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SessionAudioTests-\(UUID().uuidString)")
+        let url = dir.appendingPathComponent("one-sided-\(side).m4a")
+        let recorder = SessionAudioRecorder(fileURL: url)
+        #expect(recorder.start())
+        // Two seconds from one side only, in quarter-second buffers.
+        for _ in 0..<8 {
+            if side == "me" {
+                recorder.appendMe(makeBuffer(format: meFormat, frames: 12_000) { _ in 0.25 })
+            } else {
+                recorder.appendThem(makeBuffer(format: themFormat, frames: 12_000) { _ in 0.25 })
+            }
+        }
+        let ok = await withCheckedContinuation { continuation in
+            recorder.stop { continuation.resume(returning: $0) }
+        }
+        #expect(ok)
+        let file = try AVAudioFile(forReading: url)
+        let capacity = AVAudioFrameCount(file.length)
+        let readback = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: capacity)!
+        try file.read(into: readback)
+        let count = Int(readback.frameLength)
+        // Two seconds at 16 kHz, with codec slack on both ends.
+        #expect(count > 24_000)
+        #expect(count < 40_000)
+        let left = readback.floatChannelData![0]
+        let right = readback.floatChannelData![1]
+        var leftMean = 0.0
+        var rightMean = 0.0
+        for frame in 0..<count {
+            leftMean += abs(Double(left[frame]))
+            rightMean += abs(Double(right[frame]))
+        }
+        leftMean /= Double(count)
+        rightMean /= Double(count)
+        if side == "them" {
+            #expect(leftMean > 0.1)
+            #expect(rightMean < 0.02)
+        } else {
+            #expect(rightMean > 0.1)
+            #expect(leftMean < 0.02)
+        }
+        try? FileManager.default.removeItem(at: dir)
+    }
+}
+
 @Test("Store measures, finds and deletes audio files")
 func storeHelpers() throws {
     let name = "store-test-\(UUID().uuidString).m4a"

@@ -20,9 +20,14 @@ public struct UpcomingEvent: Identifiable, Equatable, Sendable {
     /// location text.
     public var url: String
     public var organizer: String
+    /// All-day entries (birthdays, holidays) span the whole day, so
+    /// they overlap every session that day. They name a day, not a
+    /// call, and the matcher never picks one on its own.
+    public var isAllDay: Bool
 
     public init(id: String, title: String, start: Date, end: Date, attendees: [String], calendarName: String,
-                location: String = "", details: String = "", url: String = "", organizer: String = "") {
+                location: String = "", details: String = "", url: String = "", organizer: String = "",
+                isAllDay: Bool = false) {
         self.id = id
         self.title = title
         self.start = start
@@ -33,6 +38,7 @@ public struct UpcomingEvent: Identifiable, Equatable, Sendable {
         self.details = details
         self.url = url
         self.organizer = organizer
+        self.isAllDay = isAllDay
     }
 }
 
@@ -40,12 +46,16 @@ public struct UpcomingEvent: Identifiable, Equatable, Sendable {
 /// started from the event itself. A session usually runs inside its
 /// event; starting a little early or running over is normal, so the
 /// window is widened by a tolerance on both sides. The event with the
-/// longest overlap wins; a tie goes to the earliest start.
+/// longest overlap wins; a tie goes to the earliest start. All-day
+/// events never win: they cover the whole day, so they would beat
+/// every timed event on overlap and name sessions after birthdays and
+/// holidays that have nothing to do with the call. They stay pickable
+/// by hand in the meeting history; they are just never chosen here.
 public enum EventMatcher {
     public static func pick(events: [UpcomingEvent], sessionStart: Date, sessionEnd: Date, tolerance: TimeInterval = 30 * 60) -> UpcomingEvent? {
         let windowStart = sessionStart.addingTimeInterval(-tolerance)
         let windowEnd = sessionEnd.addingTimeInterval(tolerance)
-        let candidates = events.filter { $0.end >= windowStart && $0.start <= windowEnd }
+        let candidates = events.filter { !$0.isAllDay && $0.end >= windowStart && $0.start <= windowEnd }
         return candidates.max { a, b in
             let overlapA = overlap(of: a, sessionStart, sessionEnd)
             let overlapB = overlap(of: b, sessionStart, sessionEnd)
@@ -143,7 +153,8 @@ public enum CalendarService {
             location: event.location ?? "",
             details: event.notes ?? "",
             url: event.url?.absoluteString ?? "",
-            organizer: event.organizer?.name ?? ""
+            organizer: event.organizer?.name ?? "",
+            isAllDay: event.isAllDay
         )
     }
 }

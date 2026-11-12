@@ -332,11 +332,13 @@ final class AppModel {
         // The calendar event names the meeting and brings its people,
         // whether the session was started from the event or just ran
         // while the event was on. Without a match the meeting keeps
-        // the composed mode-and-time title.
-        let event = session.linkedEvent ?? CalendarService.event(
+        // the composed mode-and-time title. When the user said at
+        // setup that this is just a call, no event is attached at
+        // all: their word beats the clock.
+        let event = session.linkedEvent ?? (session.eventDeclined ? nil : CalendarService.event(
             overlappingSessionStart: started,
             end: started.addingTimeInterval(session.duration)
-        )
+        ))
         let meeting = Meeting(
             title: event?.title ?? session.meetingTitle,
             modeID: mode.definition.id,
