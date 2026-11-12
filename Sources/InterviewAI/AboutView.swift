@@ -405,10 +405,10 @@ struct SupportPane: View {
 }
 
 /// Records the running version at launch. It used to also show the
-/// What's New section once after an update; Nils reported the app
-/// info window popping uninvited on open and close (2026-11-12), so
-/// the auto-show is off unless he turns it on himself in About.
-/// The window still opens from the menus, never on its own.
+/// What's New section once after an update; that auto-show defaults
+/// off now. What does open at launch is the Support section, on
+/// Nils's order (2026-11-12): the support sheet is live on every
+/// open, like the Vorssaint sample he sent. See AppDelegate.
 @MainActor
 enum WhatsNewLaunch {
     private static let seenKey = "app.lastSeenVersion"
