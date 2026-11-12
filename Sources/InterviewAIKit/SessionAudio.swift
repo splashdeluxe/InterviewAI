@@ -64,6 +64,20 @@ public final class SessionAudioRecorder: @unchecked Sendable {
 
     private var file: ExtAudioFileRef?
     private var failed = false
+    /// Why the recording failed, in one short line, set at the first
+    /// failure point and read by the session when it reports the
+    /// failure. The recorder is fail-soft by design, so without this
+    /// the failure is silent: the first version failed on real
+    /// sessions while its unit tests passed, with nothing anywhere
+    /// saying where it broke.
+    public private(set) var failureSummary = ""
+    private var firstFailure = ""
+    /// Caller-thread counters, guarded by the lock: appends seen and
+    /// sample frames successfully converted, per channel.
+    private var appendsThem = 0
+    private var appendsMe = 0
+    private var convertedThem = 0
+    private var convertedMe = 0
     private var pendingThem: [Float] = []
     private var pendingMe: [Float] = []
     /// Frames actually written to the file. Zero at stop means capture
@@ -82,6 +96,13 @@ public final class SessionAudioRecorder: @unchecked Sendable {
         queue.sync { file != nil && !failed }
     }
 
+    /// Queue only. Marks the recording failed and remembers the
+    /// first reason; later failures do not overwrite it.
+    private func markFailed(_ reason: String) {
+        failed = true
+        if firstFailure.isEmpty { firstFailure = reason }
+    }
+
     /// Create the file and start accepting samples. Returns false when
     /// the file cannot be created; appends are then ignored.
     @discardableResult
@@ -98,7 +119,7 @@ public final class SessionAudioRecorder: @unchecked Sendable {
             guard ExtAudioFileCreateWithURL(
                 fileURL as CFURL, kAudioFileM4AType, &fileDescription, nil,
                 AudioFileFlags.eraseFile.rawValue, &ref) == noErr, let ref else {
-                failed = true
+                markFailed("the audio file could not be created")
                 return false
             }
             var clientDescription = AudioStreamBasicDescription(
@@ -110,7 +131,7 @@ public final class SessionAudioRecorder: @unchecked Sendable {
                 ref, kExtAudioFileProperty_ClientDataFormat,
                 UInt32(MemoryLayout<AudioStreamBasicDescription>.size), &clientDescription) == noErr else {
                 ExtAudioFileDispose(ref)
-                failed = true
+                markFailed("the audio file format was refused")
                 return false
             }
             file = ref
@@ -130,7 +151,11 @@ public final class SessionAudioRecorder: @unchecked Sendable {
     private func append(_ buffer: AVAudioPCMBuffer, channel: String) {
         lock.lock()
         guard accepting else { lock.unlock(); return }
+        if channel == "them" { appendsThem += 1 } else { appendsMe += 1 }
         let floats = convertLocked(buffer, channel: channel)
+        if let floats {
+            if channel == "them" { convertedThem += floats.count } else { convertedMe += floats.count }
+        }
         lock.unlock()
         guard let floats, !floats.isEmpty else { return }
         queue.async { [weak self] in
@@ -179,7 +204,7 @@ public final class SessionAudioRecorder: @unchecked Sendable {
         guard let file, !failed, count > 0,
               let out = AVAudioPCMBuffer(pcmFormat: stereoTarget, frameCapacity: AVAudioFrameCount(count)),
               let data = out.floatChannelData?[0] else {
-            failed = true
+            markFailed("a write buffer could not be made")
             return
         }
         out.frameLength = AVAudioFrameCount(count)
@@ -190,7 +215,7 @@ public final class SessionAudioRecorder: @unchecked Sendable {
         pendingThem.removeFirst(min(count, pendingThem.count))
         pendingMe.removeFirst(min(count, pendingMe.count))
         if ExtAudioFileWrite(file, UInt32(count), out.mutableAudioBufferList) != noErr {
-            failed = true
+            markFailed("writing the audio file failed")
         } else {
             wroteFrames += count
         }
@@ -239,8 +264,17 @@ public final class SessionAudioRecorder: @unchecked Sendable {
             if ok {
                 let size = (try? FileManager.default.attributesOfItem(atPath: self.fileURL.path))?[.size] as? NSNumber
                 ok = (size?.int64Value ?? 0) > 0
+                if !ok { self.markFailed("the finished file was empty") }
             }
-            if !ok { try? FileManager.default.removeItem(at: self.fileURL) }
+            if !ok {
+                self.lock.lock()
+                let counts = "them \(self.appendsThem) appends, \(self.convertedThem) frames; me \(self.appendsMe) appends, \(self.convertedMe) frames; wrote \(self.wroteFrames)"
+                self.lock.unlock()
+                self.failureSummary = self.firstFailure.isEmpty
+                    ? "nothing was written (\(counts))"
+                    : "\(self.firstFailure) (\(counts))"
+                try? FileManager.default.removeItem(at: self.fileURL)
+            }
             box.completion(ok)
         }
     }

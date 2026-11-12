@@ -216,7 +216,10 @@ final class LiveSession {
                 } else {
                     SessionAudioStore.delete(fileName: audioName)
                     if saved != nil {
-                        self?.status = "Session saved. The audio recording failed, but the transcript is complete."
+                        let reason = activeRecorder.failureSummary
+                        self?.status = reason.isEmpty
+                            ? "Session saved. The audio recording failed, but the transcript is complete."
+                            : "Session saved. The audio recording failed (\(reason)), but the transcript is complete."
                     }
                 }
             }
@@ -440,12 +443,18 @@ final class LiveSession {
 
     /// One suggestion cycle, when the engine's gate says one is due:
     /// the live model drafts up to three candidate tips from the
-    /// recent transcript, the strict filter keeps at most one (the
-    /// Deep model does the filtering when Dual-Brain is on, through
-    /// DeepWork). A cycle that finds nothing, or fails anywhere, is
-    /// silent: a suggestion is a bonus, never an error in the answer
-    /// area. Cycles also skip while an answer is streaming, so the
-    /// local model is never asked for two things at once.
+    /// recent transcript, and the strict filter keeps at most one.
+    /// The filter is a pick-or-none judgement, so the live model
+    /// runs it too (changed 2026-11-12, Nils: answers must come
+    /// really fast). Routing it through the Deep model loaded the
+    /// second, much larger model beside the live one mid-session,
+    /// and on a 16 GB Mac that memory pressure is what made live
+    /// answers crawl. Deep still does Ask and the meeting notes,
+    /// work that happens on demand or after the call. A cycle that
+    /// finds nothing, or fails anywhere, is silent: a suggestion is
+    /// a bonus, never an error in the answer area. Cycles also skip
+    /// while an answer is streaming, so the local model is never
+    /// asked for two things at once.
     private func runSuggestionCycleIfDue() async {
         guard !isAnswering, let startedAt, let model else { return }
         let frequency = SuggestionFrequency(rawValue: UserDefaults.standard.string(forKey: "suggestions.frequency") ?? "") ?? .balanced
@@ -464,12 +473,13 @@ final class LiveSession {
             )
             let fresh = SuggestionEngine.parseCandidates(draft).filter { !SuggestionEngine.isDuplicate($0.text, previous: previous) }
             guard !fresh.isEmpty else { return }
-            let outcome = try await DeepWork.complete(
+            let scored = try await Brain.complete(
+                config: ProviderSettings.config(), apiKey: ProviderSettings.apiKey,
                 system: SuggestionPrompts.scoreSystem(frequency: frequency),
                 user: SuggestionPrompts.scoreUser(candidates: fresh, transcript: transcript),
                 maxTokens: 60
             )
-            guard let pick = SuggestionEngine.parsePick(outcome.text, candidates: fresh) else { return }
+            guard let pick = SuggestionEngine.parsePick(scored, candidates: fresh) else { return }
             suggestions.append(pick)
             let showCard = UserDefaults.standard.object(forKey: "suggestions.overlayCard") as? Bool ?? true
             if showCard { currentSuggestion = pick }
