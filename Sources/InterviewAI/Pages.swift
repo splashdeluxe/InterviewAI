@@ -1079,6 +1079,7 @@ struct ConfirmSpeakersSheet: View {
     var onPlaySample: ((Double) -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
     @State private var names: [String: String] = [:]
+    @State private var unassignedName = ""
     @State private var justOnePerson = false
     @State private var oneName = ""
     @State private var applied = false
@@ -1086,6 +1087,10 @@ struct ConfirmSpeakersSheet: View {
 
     private var voices: [SpeakerConfirmation.Voice] {
         SpeakerConfirmation.voices(in: meeting.segments)
+    }
+
+    private var unassigned: SpeakerConfirmation.Unassigned? {
+        SpeakerConfirmation.unassigned(in: meeting.segments)
     }
 
     private var invited: [String] {
@@ -1126,7 +1131,11 @@ struct ConfirmSpeakersSheet: View {
             } else {
                 Text("Confirm the Speakers")
                     .font(.title3.weight(.semibold))
-                Text("These are the voices the app heard on the other side, with a line from each. If one person appears twice, give both voices the same name and they merge. Lines with no name are listed as Them.")
+                Text(voices.isEmpty
+                     ? "The voice check found no distinct voices on the other side. The lines below have no voice yet; name them here, or use the one-person answer."
+                     : voices.count == 1
+                        ? "The voice check found 1 potential speaker on the other side, with a line from them. Give them their name."
+                        : "The voice check found \(voices.count) potential speakers on the other side, with a line from each. If one person appears twice, give both voices the same name and they merge.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Toggle("It was just one person", isOn: $justOnePerson)
@@ -1195,6 +1204,47 @@ struct ConfirmSpeakersSheet: View {
                                     .padding(.leading, 120)
                             }
                         }
+                        if let unassigned {
+                            VStack(alignment: .leading, spacing: Space.xs) {
+                                Text("Some lines have no voice. They are not another speaker; name them here, or use the one-person answer above.")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                HStack(spacing: Space.sm) {
+                                    Text("No voice found")
+                                        .font(.callout.weight(.medium))
+                                        .lineLimit(1)
+                                        .frame(width: 112, alignment: .leading)
+                                    TextField("Name for these lines", text: $unassignedName)
+                                        .textFieldStyle(.roundedBorder)
+                                    if let onPlaySample, let offset = unassigned.firstOffset {
+                                        Button {
+                                            onPlaySample(offset)
+                                        } label: {
+                                            Image(systemName: "play.circle")
+                                        }
+                                        .buttonStyle(.plain)
+                                        .help("Hear these lines")
+                                    }
+                                    if !invited.isEmpty {
+                                        Menu {
+                                            ForEach(invited, id: \.self) { person in
+                                                Button(person) { unassignedName = person }
+                                            }
+                                        } label: {
+                                            Image(systemName: "person.crop.rectangle")
+                                        }
+                                        .menuStyle(.borderlessButton)
+                                        .menuIndicator(.hidden)
+                                        .help("Pick from the invited people")
+                                    }
+                                }
+                                Text("\(unassigned.lineCount) lines · \(unassigned.sample)")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(2)
+                                    .padding(.leading, 120)
+                            }
+                        }
                     }
                 }
                 HStack(spacing: Space.sm) {
@@ -1230,11 +1280,14 @@ struct ConfirmSpeakersSheet: View {
         if justOnePerson {
             let name = oneName.trimmingCharacters(in: .whitespacesAndNewlines)
             for voice in voices where voice.name != name { mapping[voice.name] = name }
+            if unassigned != nil { mapping["Them"] = name }
         } else {
             for voice in voices {
                 let typed = (names[voice.name] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
                 if !typed.isEmpty, typed != voice.name { mapping[voice.name] = typed }
             }
+            let loose = unassignedName.trimmingCharacters(in: .whitespacesAndNewlines)
+            if unassigned != nil, !loose.isEmpty { mapping["Them"] = loose }
         }
         if !mapping.isEmpty {
             let updated = SpeakerNames.applying(segments: meeting.segments, mapping: mapping)
@@ -1296,6 +1349,14 @@ struct MeetingAudioPlayer: View {
         }
         .onAppear(perform: setUp)
         .onDisappear(perform: tearDown)
+        // The detail view stays alive while the selection moves
+        // between meetings, so the player must follow the file it
+        // was given: without this, the first meeting's audio kept
+        // playing for every meeting opened after it.
+        .onChange(of: url) { _, _ in
+            tearDown()
+            setUp()
+        }
         .onChange(of: seekRequest.wrappedValue) { _, newValue in
             if let newValue {
                 seek(to: newValue)
@@ -1307,6 +1368,9 @@ struct MeetingAudioPlayer: View {
     }
 
     private func setUp() {
+        progress = 0
+        duration = 0
+        isPlaying = false
         let player = AVPlayer(url: url)
         self.player = player
         timeObserver = player.addPeriodicTimeObserver(

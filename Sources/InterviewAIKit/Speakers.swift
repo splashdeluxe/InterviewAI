@@ -323,25 +323,52 @@ public enum SpeakerConfirmation {
         }
     }
 
-    /// The other side's voices in first-heard order. Only final
-    /// lines on the "them" channel count; the user's own lines are
-    /// never part of the confirmation.
+    /// The other side's voices in first-heard order: the voice
+    /// clusters diarization actually found, named or numbered.
+    /// Lines no voice claimed are not a speaker; they are reported
+    /// separately by `unassigned(in:)`. Only final lines on the
+    /// "them" channel count; the user's own lines are never part
+    /// of the confirmation.
     public static func voices(in segments: [TranscriptSegment]) -> [Voice] {
         var order: [String] = []
         var grouped: [String: Voice] = [:]
         for segment in segments where segment.isFinal && segment.channel == "them" {
-            let name = segment.speakerName
-            if var voice = grouped[name] {
+            guard let label = segment.speakerLabel else { continue }
+            if var voice = grouped[label] {
                 voice.lineCount += 1
-                grouped[name] = voice
+                grouped[label] = voice
             } else {
-                order.append(name)
-                grouped[name] = Voice(name: name, lineCount: 1,
-                                      sample: segment.displayText,
-                                      firstOffset: segment.startOffset)
+                order.append(label)
+                grouped[label] = Voice(name: label, lineCount: 1,
+                                       sample: segment.displayText,
+                                       firstOffset: segment.startOffset)
             }
         }
         return order.compactMap { grouped[$0] }
+    }
+
+    /// The other side's lines that no voice claimed: diarization
+    /// never covered them, so they say nothing about how many
+    /// speakers there were. They still need an owner, which the
+    /// confirmation can give them without counting them as one
+    /// more speaker.
+    public struct Unassigned: Equatable, Sendable {
+        public var lineCount: Int
+        public var sample: String
+        public var firstOffset: Double?
+
+        public init(lineCount: Int, sample: String, firstOffset: Double?) {
+            self.lineCount = lineCount
+            self.sample = sample
+            self.firstOffset = firstOffset
+        }
+    }
+
+    public static func unassigned(in segments: [TranscriptSegment]) -> Unassigned? {
+        let loose = segments.filter { $0.isFinal && $0.channel == "them" && $0.speakerLabel == nil }
+        guard let first = loose.first else { return nil }
+        return Unassigned(lineCount: loose.count, sample: first.displayText,
+                          firstOffset: first.startOffset)
     }
 
     /// A label the app made up rather than a person: the plain
@@ -352,13 +379,16 @@ public enum SpeakerConfirmation {
         return Int(name.dropFirst("Speaker ".count)) != nil
     }
 
-    /// Worth asking the user about: the other side spoke, and either
-    /// more than one voice was found or a voice still carries a
-    /// made-up label. One voice with a real name needs no check.
+    /// Worth asking the user about: the other side spoke, and
+    /// either more than one voice was found, a voice still carries
+    /// a made-up label, or some lines have no voice at all. One
+    /// voice with a real name and every line claimed needs no
+    /// check.
     public static func needsConfirmation(segments: [TranscriptSegment]) -> Bool {
         let found = voices(in: segments)
-        guard !found.isEmpty else { return false }
-        return found.count > 1 || found.contains { isGeneric($0.name) }
+        let loose = unassigned(in: segments)
+        guard !found.isEmpty || loose != nil else { return false }
+        return found.count > 1 || loose != nil || found.contains { isGeneric($0.name) }
     }
 }
 
