@@ -11,7 +11,9 @@ import InterviewAIKit
 
 struct LivePage: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var upcomingEvents: [UpcomingEvent] = []
+    @State private var hoveringPrimary = false
     @State private var calendarState = CalendarService.authorizationText()
     @AppStorage("sessionAudio.enabled") private var saveSessionAudio = false
     @AppStorage("live.answerLayout") private var answerLayoutRaw = AnswerLayout.balanced.rawValue
@@ -19,6 +21,16 @@ struct LivePage: View {
     /// How the page splits between transcript and answer, from the
     /// menu in the Answer header: Balanced, Answer Focus, Full Width.
     private var layout: AnswerLayout { AnswerLayout(rawValue: answerLayoutRaw) ?? .balanced }
+
+    /// The main button names its outcome while the pointer rests
+    /// on it: what starting actually gives you, and what stopping
+    /// opens. At rest it keeps its short name.
+    private func primaryTitle(session: LiveSession, hovering: Bool) -> String {
+        if session.isListening {
+            return hovering ? "End, pause or delete" : "Stop"
+        }
+        return hovering ? "On this Mac, both sides" : "Start Listening"
+    }
 
     var body: some View {
         let session = model.session
@@ -52,7 +64,7 @@ struct LivePage: View {
                 Button("Overlay", systemImage: "macwindow.on.rectangle") { model.overlay.toggle() }
                     .buttonStyle(QuietButtonStyle())
                     .help("Show or hide the floating overlay (⌘⇧H)")
-                Button(session.isListening ? "Stop" : "Start Listening", systemImage: session.isListening ? "stop.circle" : "waveform") {
+                Button {
                     if session.isListening {
                         // Stop opens the Session Controls: end and
                         // save, pause where it stands, or delete.
@@ -64,8 +76,13 @@ struct LivePage: View {
                         // from being saved as a birthday.
                         session.setupRequested = true
                     }
+                } label: {
+                    Label(primaryTitle(session: session, hovering: hoveringPrimary),
+                          systemImage: session.isListening ? "stop.circle" : "waveform")
                 }
                 .buttonStyle(InkButtonStyle())
+                .onHover { hoveringPrimary = $0 }
+                .animation(Motion.contentSwap(reduceMotion: reduceMotion), value: hoveringPrimary)
                 .help("Start or stop listening (⌘⇧L)")
             }
             .padding(.horizontal, Space.margin)

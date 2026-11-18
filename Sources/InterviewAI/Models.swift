@@ -214,6 +214,11 @@ final class AppModel {
     let container: ModelContainer
     var sidebar: SidebarItem? = .live
     var selectedMeeting: PersistentIdentifier?
+    /// The Settings scene's opener, captured by the main window
+    /// (the one place the environment hands it out). Windows that
+    /// live outside the scene, the command palette above all, open
+    /// Settings through here instead of a responder-chain guess.
+    var openSettingsAction: (() -> Void)?
     var settingsTab: SettingsTab = SettingsTab(rawValue: UserDefaults.standard.string(forKey: "settings.tab") ?? "") ?? .general {
         didSet { if !Store.isOverridden { UserDefaults.standard.set(settingsTab.rawValue, forKey: "settings.tab") } }
     }

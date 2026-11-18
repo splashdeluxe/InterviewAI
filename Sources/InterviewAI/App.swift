@@ -41,6 +41,8 @@ struct InterviewAIApp: App {
             CommandGroup(after: .appInfo) {
                 Button("Keyboard Shortcuts") { ShortcutsWindow.show() }
                     .keyboardShortcut("/", modifiers: .command)
+                Button("Command Palette") { CommandPaletteWindow.show(model: model) }
+                    .keyboardShortcut("k", modifiers: .command)
             }
             // No .appSettings group here: the Settings scene already puts
             // one Settings… item in the app menu, and a second one from a

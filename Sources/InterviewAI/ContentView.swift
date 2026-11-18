@@ -22,6 +22,7 @@ struct ContentView: View {
                 .background(Surface.canvas)
         }
         .onAppear {
+            model.openSettingsAction = { openSettings() }
             // The v2 wizard is for fresh installs only: an install
             // that finished the 1.10.0 card never sees it. The dev
             // tools (snapshots, seed data) never see it either; that
@@ -54,14 +55,25 @@ struct ContentView: View {
         @Bindable var model = model
         return VStack(spacing: 0) {
             sidebarHeader
-            List(SidebarItem.allCases, selection: $model.sidebar) { page in
-                Label(page.title, systemImage: page.symbol)
-                    .tag(page)
+            List(selection: $model.sidebar) {
+                Section("Session") { sidebarRow(.live) }
+                Section("Library") { sidebarRow(.meetings) }
+                Section("Prepare") {
+                    sidebarRow(.modes)
+                    sidebarRow(.context)
+                    sidebarRow(.intelligence)
+                }
+                Section("Help") { sidebarRow(.ask) }
             }
             .listStyle(.sidebar)
             statusStrip
         }
         .navigationSplitViewColumnWidth(min: 180, ideal: 212)
+    }
+
+    private func sidebarRow(_ page: SidebarItem) -> some View {
+        Label(page.title, systemImage: page.symbol)
+            .tag(page)
     }
 
     /// The product names itself at the top of the shell: a plain ink

@@ -21,6 +21,7 @@ struct ShortcutsView: View {
             ShortcutRow(keys: "⌘ ⇧ S", action: "Attach the front window as a screenshot to the next answer"),
             ShortcutRow(keys: "⌘ 1 … ⌘ 7", action: "Answer actions: " + AnswerAction.allCases.map(\.title).joined(separator: ", ")),
             ShortcutRow(keys: "⌘ ,", action: "Settings"),
+            ShortcutRow(keys: "⌘ K", action: "Command palette: jump to a page, meeting, mode or action"),
             ShortcutRow(keys: "⌘ /", action: "This list"),
         ]
     }
