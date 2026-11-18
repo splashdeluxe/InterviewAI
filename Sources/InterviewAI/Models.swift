@@ -40,6 +40,11 @@ final class Meeting {
     /// plain words (see DiarizationNotes). Empty when separation
     /// worked or was never attempted.
     var diarizationNote: String = ""
+    /// The user has confirmed who was in this meeting (Confirm
+    /// Speakers on the meeting view, or "Looks right" there). Once
+    /// set, the meeting never asks again; the names can still be
+    /// changed any time from Name Speakers.
+    var speakersConfirmed: Bool = false
     var uuid: UUID = UUID()
 
     init(title: String, modeID: String, modeName: String) {

@@ -612,6 +612,7 @@ struct MeetingsPage: View {
     @State private var tab = "Transcript"
     @State private var showEventPicker = false
     @State private var showSpeakerNames = false
+    @State private var showConfirmSpeakers = false
     @State private var showImport = false
     @State private var showCleaned = false
     @State private var cleaning = false
@@ -775,6 +776,10 @@ struct MeetingsPage: View {
                 .sheet(isPresented: $showSpeakerNames) {
                     SpeakerNamesSheet(meeting: meeting)
                 }
+                .sheet(isPresented: $showConfirmSpeakers) {
+                    ConfirmSpeakersSheet(meeting: meeting,
+                                         onPlaySample: hasAudio ? { offset in seekRequest = max(0, offset - 1) } : nil)
+                }
                 if hasAudio {
                     MeetingAudioPlayer(url: SessionAudioStore.url(fileName: meeting.audioFileName), seekRequest: $seekRequest)
                 }
@@ -808,6 +813,30 @@ struct MeetingsPage: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
+                }
+                if !meeting.speakersConfirmed,
+                   SpeakerConfirmation.needsConfirmation(segments: meeting.segments) {
+                    VStack(alignment: .leading, spacing: Space.sm) {
+                        Text("Who was in this meeting?")
+                            .font(.headline)
+                        Text("The voices on the other side are not confirmed yet. Voices are separated by sound, so one person can appear as two speakers, and some lines get no name at all.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        HStack(spacing: Space.sm) {
+                            Button("Confirm Speakers…") { showConfirmSpeakers = true }
+                                .buttonStyle(InkButtonStyle())
+                            Button("Looks Right") {
+                                meeting.speakersConfirmed = true
+                                try? meeting.modelContext?.save()
+                            }
+                            .buttonStyle(QuietButtonStyle())
+                            Spacer()
+                        }
+                    }
+                    .padding(Space.md)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Surface.panel, in: RoundedRectangle(cornerRadius: Radius.card))
+                    .overlay(RoundedRectangle(cornerRadius: Radius.card).stroke(Surface.hairline, lineWidth: 1))
                 }
                 Picker("View", selection: $tab) {
                     Text("Transcript").tag("Transcript")
@@ -1028,6 +1057,192 @@ struct SpeakerNamesSheet: View {
         Binding(
             get: { names[speaker] ?? speaker },
             set: { names[speaker] = $0 }
+        )
+    }
+}
+
+/// Confirm who was actually in a meeting. Diarization groups the
+/// other side by voice, and one person can land in two groups;
+/// this sheet lists each voice with its line count, a sample line,
+/// and a listen button when the audio is saved, and applies the
+/// answer as one rename pass: two voices given the same name
+/// merge, and the one-person answer names every voice at once,
+/// the unnamed lines included. Confirming is remembered on the
+/// meeting, so it is asked once.
+struct ConfirmSpeakersSheet: View {
+    let meeting: Meeting
+    /// Seeks the meeting's audio player to a voice's first line.
+    /// Nil when the meeting has no saved audio.
+    var onPlaySample: ((Double) -> Void)? = nil
+    @Environment(\.dismiss) private var dismiss
+    @State private var names: [String: String] = [:]
+    @State private var justOnePerson = false
+    @State private var oneName = ""
+    @State private var applied = false
+    @State private var regenerating = false
+
+    private var voices: [SpeakerConfirmation.Voice] {
+        SpeakerConfirmation.voices(in: meeting.segments)
+    }
+
+    private var invited: [String] {
+        meeting.attendees.isEmpty ? [] : meeting.attendees.components(separatedBy: ", ")
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Space.lg) {
+            if applied {
+                Text("Speakers confirmed.")
+                    .font(.title3.weight(.semibold))
+                if !meeting.summary.isEmpty {
+                    Text("The summary and follow-up still use the names they were written with.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    HStack(spacing: Space.sm) {
+                        Button {
+                            regenerating = true
+                            MeetingImporter.summarize(meeting: meeting) { regenerating = false }
+                        } label: {
+                            Label(regenerating ? "Writing…" : "Regenerate Summary", systemImage: "arrow.clockwise")
+                        }
+                        .buttonStyle(QuietButtonStyle())
+                        .disabled(regenerating)
+                        if regenerating { ProgressView().controlSize(.small) }
+                        Spacer()
+                    }
+                }
+                HStack(spacing: Space.sm) {
+                    Spacer()
+                    Button("Done") { dismiss() }
+                        .buttonStyle(InkButtonStyle())
+                        .keyboardShortcut(.defaultAction)
+                }
+            } else {
+                Text("Confirm the Speakers")
+                    .font(.title3.weight(.semibold))
+                Text("These are the voices the app heard on the other side, with a line from each. If one person appears twice, give both voices the same name and they merge. Lines with no name are listed as Them.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Toggle("It was just one person", isOn: $justOnePerson)
+                    .toggleStyle(.checkbox)
+                if justOnePerson {
+                    HStack(spacing: Space.sm) {
+                        Text("Their name")
+                            .font(.callout.weight(.medium))
+                            .lineLimit(1)
+                            .frame(width: 112, alignment: .leading)
+                        TextField("Name", text: $oneName)
+                            .textFieldStyle(.roundedBorder)
+                        if !invited.isEmpty {
+                            Menu {
+                                ForEach(invited, id: \.self) { person in
+                                    Button(person) { oneName = person }
+                                }
+                            } label: {
+                                Image(systemName: "person.crop.rectangle")
+                            }
+                            .menuStyle(.borderlessButton)
+                            .menuIndicator(.hidden)
+                            .help("Pick from the invited people")
+                        }
+                    }
+                    Text("Every line on the other side gets this name, including the lines that have none.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    VStack(alignment: .leading, spacing: Space.md) {
+                        ForEach(voices, id: \.name) { voice in
+                            VStack(alignment: .leading, spacing: Space.xs) {
+                                HStack(spacing: Space.sm) {
+                                    Text(voice.name)
+                                        .font(.callout.weight(.medium))
+                                        .lineLimit(1)
+                                        .frame(width: 112, alignment: .leading)
+                                    TextField(voice.name, text: binding(for: voice))
+                                        .textFieldStyle(.roundedBorder)
+                                    if let onPlaySample, let offset = voice.firstOffset {
+                                        Button {
+                                            onPlaySample(offset)
+                                        } label: {
+                                            Image(systemName: "play.circle")
+                                        }
+                                        .buttonStyle(.plain)
+                                        .help("Hear this voice")
+                                    }
+                                    if !invited.isEmpty {
+                                        Menu {
+                                            ForEach(invited, id: \.self) { person in
+                                                Button(person) { names[voice.name] = person }
+                                            }
+                                        } label: {
+                                            Image(systemName: "person.crop.rectangle")
+                                        }
+                                        .menuStyle(.borderlessButton)
+                                        .menuIndicator(.hidden)
+                                        .help("Pick from the invited people")
+                                    }
+                                }
+                                Text("\(voice.lineCount) lines · \(voice.sample)")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(2)
+                                    .padding(.leading, 120)
+                            }
+                        }
+                    }
+                }
+                HStack(spacing: Space.sm) {
+                    Button("Cancel") { dismiss() }
+                        .buttonStyle(QuietButtonStyle())
+                        .keyboardShortcut(.cancelAction)
+                    Spacer()
+                    Button("Apply Names") { apply() }
+                        .buttonStyle(InkButtonStyle())
+                        .keyboardShortcut(.defaultAction)
+                        .disabled(justOnePerson && oneName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+        }
+        .padding(Space.xl)
+        .frame(width: 480)
+        .background(Surface.canvas)
+        .onAppear(perform: prefill)
+    }
+
+    private func prefill() {
+        for voice in voices where names[voice.name] == nil {
+            names[voice.name] = SpeakerConfirmation.isGeneric(voice.name) ? "" : voice.name
+        }
+        if oneName.isEmpty {
+            oneName = voices.first(where: { !SpeakerConfirmation.isGeneric($0.name) })?.name
+                ?? invited.first ?? ""
+        }
+    }
+
+    private func apply() {
+        var mapping: [String: String] = [:]
+        if justOnePerson {
+            let name = oneName.trimmingCharacters(in: .whitespacesAndNewlines)
+            for voice in voices where voice.name != name { mapping[voice.name] = name }
+        } else {
+            for voice in voices {
+                let typed = (names[voice.name] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                if !typed.isEmpty, typed != voice.name { mapping[voice.name] = typed }
+            }
+        }
+        if !mapping.isEmpty {
+            let updated = SpeakerNames.applying(segments: meeting.segments, mapping: mapping)
+            meeting.transcriptJSON = TranscriptSegment.encode(updated)
+        }
+        meeting.speakersConfirmed = true
+        try? meeting.modelContext?.save()
+        applied = true
+    }
+
+    private func binding(for voice: SpeakerConfirmation.Voice) -> Binding<String> {
+        Binding(
+            get: { names[voice.name] ?? "" },
+            set: { names[voice.name] = $0 }
         )
     }
 }

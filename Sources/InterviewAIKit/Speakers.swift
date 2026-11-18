@@ -163,6 +163,76 @@ public enum DiarizationNotes {
     public static let firstHourOnly = "Speakers were checked for the first hour only; later voices keep the plain labels."
 }
 
+/// The voices on the other side of a meeting, grouped for the
+/// confirm step. Diarization separates voices by sound, not by
+/// person, so one person can land in two groups and some lines get
+/// no group at all. Only the user knows who was actually in the
+/// meeting, so the groups are presented for confirmation and the
+/// fix is a rename through `SpeakerNames.applying`: naming two
+/// groups the same merges them, and naming the unnamed group
+/// ("Them") gives those lines a speaker too.
+public enum SpeakerConfirmation {
+    /// One voice as the transcript currently presents it.
+    public struct Voice: Equatable, Sendable {
+        /// The label the reader sees now: a real name, "Speaker N",
+        /// or "Them" for the lines no voice claimed.
+        public var name: String
+        public var lineCount: Int
+        /// The first line this voice said, so the user can recognise
+        /// them without playing anything.
+        public var sample: String
+        /// Where the first line starts in the saved audio, for a
+        /// listen-to-this-voice button. Nil when the line has no
+        /// timing.
+        public var firstOffset: Double?
+
+        public init(name: String, lineCount: Int, sample: String, firstOffset: Double?) {
+            self.name = name
+            self.lineCount = lineCount
+            self.sample = sample
+            self.firstOffset = firstOffset
+        }
+    }
+
+    /// The other side's voices in first-heard order. Only final
+    /// lines on the "them" channel count; the user's own lines are
+    /// never part of the confirmation.
+    public static func voices(in segments: [TranscriptSegment]) -> [Voice] {
+        var order: [String] = []
+        var grouped: [String: Voice] = [:]
+        for segment in segments where segment.isFinal && segment.channel == "them" {
+            let name = segment.speakerName
+            if var voice = grouped[name] {
+                voice.lineCount += 1
+                grouped[name] = voice
+            } else {
+                order.append(name)
+                grouped[name] = Voice(name: name, lineCount: 1,
+                                      sample: segment.displayText,
+                                      firstOffset: segment.startOffset)
+            }
+        }
+        return order.compactMap { grouped[$0] }
+    }
+
+    /// A label the app made up rather than a person: the plain
+    /// channel name, or a numbered diarization label.
+    public static func isGeneric(_ name: String) -> Bool {
+        if name == "Them" { return true }
+        guard name.hasPrefix("Speaker ") else { return false }
+        return Int(name.dropFirst("Speaker ".count)) != nil
+    }
+
+    /// Worth asking the user about: the other side spoke, and either
+    /// more than one voice was found or a voice still carries a
+    /// made-up label. One voice with a real name needs no check.
+    public static func needsConfirmation(segments: [TranscriptSegment]) -> Bool {
+        let found = voices(in: segments)
+        guard !found.isEmpty else { return false }
+        return found.count > 1 || found.contains { isGeneric($0.name) }
+    }
+}
+
 /// The one model call that may match diarized speakers to invited
 /// names, after a call. The bar is evidence inside the transcript:
 /// an introduction, a self-reference, being addressed by name. The
