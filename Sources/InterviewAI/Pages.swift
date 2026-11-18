@@ -617,6 +617,8 @@ struct MeetingsPage: View {
     @State private var showCleaned = false
     @State private var cleaning = false
     @State private var cleanFailed = false
+    @State private var cleanTask: Task<Void, Never>? = nil
+    @State private var cleanProgress: (done: Int, total: Int)? = nil
     @State private var regenerating = false
     @State private var seekRequest: Double? = nil
     @AppStorage("reading.transcriptFontSize") private var transcriptFontSize = 14.0
@@ -900,17 +902,31 @@ struct MeetingsPage: View {
                             Button {
                                 cleaning = true
                                 cleanFailed = false
-                                TranscriptCleaner.clean(meeting: meeting) { success in
+                                cleanProgress = nil
+                                cleanTask = TranscriptCleaner.clean(meeting: meeting, onProgress: { done, total in
+                                    cleanProgress = (done, total)
+                                }) { success in
                                     cleaning = false
+                                    cleanProgress = nil
+                                    cleanTask = nil
                                     cleanFailed = !success
                                     if success { showCleaned = true }
                                 }
                             } label: {
-                                Label(cleaning ? "Cleaning…" : "Clean Transcript", systemImage: "sparkles")
+                                Label(cleaning ? (cleanProgress.map { "Cleaning… \($0.done) of \($0.total)" } ?? "Cleaning…") : "Clean Transcript", systemImage: "sparkles")
                             }
                             .buttonStyle(QuietButtonStyle())
                             .disabled(cleaning || meeting.segments.isEmpty)
-                            if cleaning { ProgressView().controlSize(.small) }
+                            if cleaning {
+                                ProgressView().controlSize(.small)
+                                Button("Cancel") {
+                                    cleanTask?.cancel()
+                                    cleanTask = nil
+                                    cleaning = false
+                                    cleanProgress = nil
+                                }
+                                .buttonStyle(QuietButtonStyle())
+                            }
                         }
                         if showCleaned && meeting.hasCleanedTranscript {
                             Label("Viewing cleaned transcript. The original is kept and never overwritten.", systemImage: "sparkles")

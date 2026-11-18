@@ -64,3 +64,32 @@ func deepQueueSerializes() async {
         #expect(entries[position + 1] == "end-" + start.dropFirst("start-".count))
     }
 }
+
+@Test("Cancelling the caller cancels the queued job itself")
+func deepQueueCancellationReachesJob() async {
+    final class Probe: @unchecked Sendable {
+        private let lock = NSLock()
+        private var saw = false
+        func mark() { lock.lock(); saw = true; lock.unlock() }
+        func read() -> Bool { lock.lock(); defer { lock.unlock() }; return saw }
+    }
+    let queue = DeepWorkQueue()
+    let probe = Probe()
+    let task = Task {
+        try await queue.run { () async throws -> Int in
+            do {
+                try await Task.sleep(for: .seconds(10))
+                return 1
+            } catch {
+                probe.mark()
+                throw error
+            }
+        }
+    }
+    try? await Task.sleep(for: .milliseconds(200))
+    task.cancel()
+    var threwCancellation = false
+    do { _ = try await task.value } catch { threwCancellation = error is CancellationError }
+    #expect(threwCancellation)
+    #expect(probe.read())
+}

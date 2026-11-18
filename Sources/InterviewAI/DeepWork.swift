@@ -29,6 +29,9 @@ enum DeepWork {
                 let text = try await Brain.complete(config: deep, apiKey: apiKey, system: system, user: user, maxTokens: maxTokens, keepAlive: "5m")
                 return Outcome(text: text, fellBack: false)
             } catch {
+                // A cancel is not a failure: a job the user stopped
+                // is never retried on the other model.
+                if error is CancellationError { throw error }
                 let text = try await Brain.complete(config: live, apiKey: apiKey, system: system, user: user, maxTokens: maxTokens)
                 return Outcome(text: text, fellBack: true)
             }
@@ -56,7 +59,7 @@ enum DeepWork {
                                 continuation.yield(piece)
                             }
                         } catch {
-                            if produced { throw error }
+                            if produced || error is CancellationError { throw error }
                             await MainActor.run(body: onFallback)
                             for try await piece in Brain.stream(config: live, apiKey: apiKey, system: system, user: user, imageBase64: nil) {
                                 continuation.yield(piece)

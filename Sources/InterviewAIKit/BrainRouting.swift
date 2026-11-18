@@ -61,6 +61,14 @@ public actor DeepWorkQueue {
             return try await work()
         }
         tail = Task { _ = try? await job.value }
-        return try await job.value
+        // Cancelling the caller cancels the job itself, not just the
+        // wait for it: without this, a job the user stopped kept the
+        // model busy to the end of its answer and held the queue for
+        // every job behind it.
+        return try await withTaskCancellationHandler {
+            try await job.value
+        } onCancel: {
+            job.cancel()
+        }
     }
 }
