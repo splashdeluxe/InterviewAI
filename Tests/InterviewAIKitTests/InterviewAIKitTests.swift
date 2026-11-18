@@ -61,6 +61,30 @@ func promptBuilds() {
     #expect(system.contains("do not invent it"))
 }
 
+@Test("Prompts shape answers for a glance: bold lead line, one point per line")
+func promptShapesAnswers() {
+    let system = PromptBuilder.systemPrompt(modePrompt: "Mode.")
+    #expect(system.contains("Shape every answer for a glance"))
+    #expect(system.contains("the first line is the direct answer"))
+    let user = PromptBuilder.userMessage(
+        action: .answer, typedQuestion: nil, customContext: "",
+        documents: [], transcript: [], screenshotNote: false)
+    #expect(user.contains("Shape the answer: first line the direct answer in bold"))
+}
+
+@Test("Answer lines split for the glance readout, bullets and blanks dropped")
+func answerLinesSplit() {
+    let text = "**I led a team of twelve.**\n\n- Peak load: 40 percent in Q3\n• Started in 2019\n* Based in Berlin\n"
+    #expect(AnswerLines.lines(in: text) == [
+        "**I led a team of twelve.**",
+        "Peak load: 40 percent in Q3",
+        "Started in 2019",
+        "Based in Berlin",
+    ])
+    #expect(AnswerLines.lines(in: "") == [])
+    #expect(AnswerLines.lines(in: "One line only.") == ["One line only."])
+}
+
 @Test("Transcript round-trips through JSON and plain text skips partials")
 func transcriptCoding() {
     let segments = [

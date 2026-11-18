@@ -184,7 +184,7 @@ struct LivePage: View {
                                         .foregroundStyle(.secondary)
                                         .frame(maxWidth: .infinity, alignment: .leading)
                                 } else {
-                                    AnswerTextView(text: session.answer)
+                                    AnswerTextView(text: session.answer, streaming: session.isAnswering)
                                         .frame(maxWidth: .infinity, alignment: .leading)
                                 }
                             }

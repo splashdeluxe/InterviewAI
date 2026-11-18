@@ -494,7 +494,7 @@ struct OverlayView: View {
                             .foregroundStyle(.secondary)
                             .transition(.opacity)
                     } else {
-                        AnswerTextView(text: model.session.answer)
+                        AnswerTextView(text: model.session.answer, streaming: model.session.isAnswering)
                             .transition(.opacity)
                     }
                     if model.session.isAnswering {

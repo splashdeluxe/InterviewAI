@@ -32,7 +32,7 @@ public enum PromptBuilder {
     public static let contextCharBudget = 24_000
 
     public static func systemPrompt(modePrompt: String, answerLanguage: String? = nil) -> String {
-        var prompt = modePrompt + "\n\nRules: Use only facts from the context and the conversation. If a fact is not there, do not invent it. Answer as me, in first person, ready to say out loud: no introduction, no explanation of the answer, no offer to help. Keep it short and speakable unless I ask for detail."
+        var prompt = modePrompt + "\n\nRules: Use only facts from the context and the conversation. If a fact is not there, do not invent it. Answer as me, in first person, ready to say out loud: no introduction, no explanation of the answer, no offer to help. Keep it short and speakable unless I ask for detail. Shape every answer for a glance, never as a paragraph: the first line is the direct answer, one short sentence, written in bold like **this**. Then at most three more lines, one point per line: a figure, an example, a date. No bullet marks, no numbering, no closing line. If one line is the whole answer, give only that line."
         if let answerLanguage, !answerLanguage.isEmpty {
             // The context and the profile are usually in the user's
             // language, the call in the other side's. Without this rule
@@ -97,6 +97,9 @@ public enum PromptBuilder {
         if screenshotNote {
             task += "\n\nA screenshot of my screen is attached. Use what it shows, including any text or code on it."
         }
+        // The shape, restated at the end like the language rule: a
+        // small model follows the instruction it saw last.
+        task += "\n\nShape the answer: first line the direct answer in bold, then one point per line, at most three more lines."
         if let answerLanguage, !answerLanguage.isEmpty {
             // Restated at the very end, where a small model weights an
             // instruction most: the system rule alone was not enough.

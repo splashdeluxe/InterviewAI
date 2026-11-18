@@ -72,3 +72,21 @@ public enum AnswerHighlight {
         return out
     }
 }
+
+/// The answer's lines for the glance readout. Answers are shaped
+/// one point per line (see the prompt rules); this splits the raw
+/// text into those lines, dropping blank lines and the bullet
+/// marks models add anyway, so the view can give the first line
+/// its weight and keep the rest quiet. Bold markers stay: the
+/// highlight pass reads them.
+public enum AnswerLines {
+    public static func lines(in text: String) -> [String] {
+        text.components(separatedBy: "\n").compactMap { raw in
+            var line = raw.trimmingCharacters(in: .whitespaces)
+            if line.hasPrefix("- ") || line.hasPrefix("• ") || line.hasPrefix("* ") {
+                line = String(line.dropFirst(2)).trimmingCharacters(in: .whitespaces)
+            }
+            return line.isEmpty ? nil : line
+        }
+    }
+}
