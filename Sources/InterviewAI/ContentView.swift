@@ -55,25 +55,14 @@ struct ContentView: View {
         @Bindable var model = model
         return VStack(spacing: 0) {
             sidebarHeader
-            List(selection: $model.sidebar) {
-                Section("Session") { sidebarRow(.live) }
-                Section("Library") { sidebarRow(.meetings) }
-                Section("Prepare") {
-                    sidebarRow(.modes)
-                    sidebarRow(.context)
-                    sidebarRow(.intelligence)
-                }
-                Section("Help") { sidebarRow(.ask) }
+            List(SidebarItem.allCases, selection: $model.sidebar) { page in
+                Label(page.title, systemImage: page.symbol)
+                    .tag(page)
             }
             .listStyle(.sidebar)
             statusStrip
         }
         .navigationSplitViewColumnWidth(min: 180, ideal: 212)
-    }
-
-    private func sidebarRow(_ page: SidebarItem) -> some View {
-        Label(page.title, systemImage: page.symbol)
-            .tag(page)
     }
 
     /// The product names itself at the top of the shell: a plain ink
