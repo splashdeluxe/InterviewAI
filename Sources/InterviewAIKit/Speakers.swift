@@ -153,6 +153,16 @@ public enum SpeakerNames {
     }
 }
 
+/// What a meeting shows when speaker separation did not fully
+/// happen. Silence here reads as "only one person spoke", which is
+/// often wrong, so the outcome is written on the meeting in plain
+/// words instead. One source for the wording, app and imports alike.
+public enum DiarizationNotes {
+    public static let tooShort = "Speaker labels are unavailable for this session: it was too short to separate the voices."
+    public static let unavailable = "Speaker labels are unavailable for this session."
+    public static let firstHourOnly = "Speakers were checked for the first hour only; later voices keep the plain labels."
+}
+
 /// The one model call that may match diarized speakers to invited
 /// names, after a call. The bar is evidence inside the transcript:
 /// an introduction, a self-reference, being addressed by name. The

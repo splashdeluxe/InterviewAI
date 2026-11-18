@@ -48,26 +48,35 @@ enum MeetingImporter {
 
     /// The summary and follow-up for an imported meeting, written by
     /// the deep model when Dual-Brain is on, like a live session's.
-    static func summarize(meeting: Meeting) {
+    /// Also the Regenerate Summary path for any saved meeting: the
+    /// summary is rewritten from the current transcript, so speaker
+    /// renames reach it. `onDone` fires on the main actor either way.
+    static func summarize(meeting: Meeting, onDone: (@MainActor () -> Void)? = nil) {
         let segments = meeting.segments
-        guard !segments.isEmpty else { return }
+        guard !segments.isEmpty else {
+            if let onDone { Task { @MainActor in onDone() } }
+            return
+        }
         let singleChannel = !segments.contains { $0.channel == "them" }
+        let attendeeList = meeting.attendees.isEmpty ? [] : meeting.attendees.components(separatedBy: ", ")
         Task {
             let outcome = try? await DeepWork.complete(
                 system: "You write meeting notes from a transcript: clear, complete, factual. Use only the transcript. No invented names, numbers, decisions, or roles.",
                 user: PromptBuilder.summaryMessage(
-                    transcript: segments, notes: "", title: meeting.title,
-                    attendees: [], singleChannel: singleChannel
+                    transcript: segments, notes: meeting.notes, title: meeting.title,
+                    attendees: attendeeList, singleChannel: singleChannel
                 ),
                 maxTokens: 1200
             )
-            guard let outcome, !outcome.text.isEmpty else { return }
-            let parts = outcome.text.components(separatedBy: "===")
-            meeting.summary = SummaryCleaner.clean(parts.first ?? "")
-            if parts.count > 1 {
-                meeting.followUp = SummaryCleaner.clean(parts[1])
+            if let outcome, !outcome.text.isEmpty {
+                let parts = outcome.text.components(separatedBy: "===")
+                meeting.summary = SummaryCleaner.clean(parts.first ?? "")
+                if parts.count > 1 {
+                    meeting.followUp = SummaryCleaner.clean(parts[1])
+                }
+                try? meeting.modelContext?.save()
             }
-            try? meeting.modelContext?.save()
+            if let onDone { await MainActor.run { onDone() } }
         }
     }
 
@@ -82,13 +91,20 @@ enum MeetingImporter {
                     meeting.transcriptJSON = TranscriptSegment.encode(updated)
                     try? meeting.modelContext?.save()
                 }
+            } else if !meeting.segments.isEmpty {
+                meeting.diarizationNote = DiarizationNotes.tooShort
+                try? meeting.modelContext?.save()
             }
             return
         }
         let segments = meeting.segments
         Task {
             guard let ranges = try? await DiarizationRuntime.shared.diarize(samples: samples),
-                  !ranges.isEmpty else { return }
+                  !ranges.isEmpty else {
+                meeting.diarizationNote = DiarizationNotes.unavailable
+                try? meeting.modelContext?.save()
+                return
+            }
             let windows: [(start: Double, end: Double)?] = segments.map { segment in
                 guard segment.channel == "them",
                       let start = segment.startOffset, let duration = segment.duration else { return nil }

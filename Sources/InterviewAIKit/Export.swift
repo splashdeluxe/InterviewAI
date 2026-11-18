@@ -7,7 +7,7 @@ public enum TranscriptExport {
     /// Markdown document: title, when it ran, who was invited, where,
     /// then the conversation with a bold speaker per line, then the
     /// summary when there is one.
-    public static func markdown(title: String, date: Date, attendees: [String], location: String, segments: [TranscriptSegment], summary: String) -> String {
+    public static func markdown(title: String, date: Date, attendees: [String], location: String, segments: [TranscriptSegment], summary: String, includeTimestamps: Bool = false) -> String {
         var lines: [String] = ["# \(title)", ""]
         lines.append("Date: \(date.formatted(date: .complete, time: .shortened))")
         if !attendees.isEmpty {
@@ -20,7 +20,11 @@ public enum TranscriptExport {
         lines.append("## Transcript")
         lines.append("")
         for segment in segments where segment.isFinal {
-            lines.append("**\(segment.speakerName):** \(segment.displayText)")
+            if includeTimestamps, let start = segment.startOffset {
+                lines.append("[\(TranscriptTime.label(seconds: start))] **\(segment.speakerName):** \(segment.displayText)")
+            } else {
+                lines.append("**\(segment.speakerName):** \(segment.displayText)")
+            }
             lines.append("")
         }
         if !summary.isEmpty {
@@ -33,7 +37,7 @@ public enum TranscriptExport {
     }
 
     /// Plain text, same content without the marks.
-    public static func plainText(title: String, date: Date, attendees: [String], location: String, segments: [TranscriptSegment], summary: String) -> String {
+    public static func plainText(title: String, date: Date, attendees: [String], location: String, segments: [TranscriptSegment], summary: String, includeTimestamps: Bool = false) -> String {
         var lines: [String] = [title, date.formatted(date: .complete, time: .shortened)]
         if !attendees.isEmpty {
             lines.append("Invited: \(attendees.joined(separator: ", "))")
@@ -42,7 +46,7 @@ public enum TranscriptExport {
             lines.append("Location: \(location)")
         }
         lines.append("")
-        lines.append(TranscriptSegment.plainText(segments))
+        lines.append(TranscriptSegment.plainText(segments, includeTimestamps: includeTimestamps))
         if !summary.isEmpty {
             lines.append("")
             lines.append(summary)

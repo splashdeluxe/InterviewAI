@@ -611,7 +611,13 @@ struct MeetingsPage: View {
     @State private var showEventPicker = false
     @State private var showSpeakerNames = false
     @State private var showImport = false
+    @State private var showCleaned = false
+    @State private var cleaning = false
+    @State private var cleanFailed = false
+    @State private var regenerating = false
+    @State private var seekRequest: Double? = nil
     @AppStorage("reading.transcriptFontSize") private var transcriptFontSize = 14.0
+    @AppStorage("transcript.showTimestamps") private var showTimestamps = false
 
     /// List rows are narrow: a composed title ("General · Nov 4, 2026
     /// at 9:19 PM") truncates before the time shows. Rows carry mode
@@ -693,6 +699,8 @@ struct MeetingsPage: View {
             let detailsText = meeting.eventDetails.isEmpty ? (liveEvent?.details ?? "") : meeting.eventDetails
             let whenStart = meeting.eventStart ?? liveEvent?.start
             let whenEnd = meeting.eventEnd ?? liveEvent?.end
+            let shownSegments = (showCleaned && meeting.hasCleanedTranscript) ? meeting.cleanedSegments : meeting.segments
+            let hasAudio = !meeting.audioFileName.isEmpty && SessionAudioStore.exists(fileName: meeting.audioFileName)
             VStack(alignment: .leading, spacing: Space.md) {
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: Space.xs) {
@@ -737,12 +745,12 @@ struct MeetingsPage: View {
                         }
                         .disabled(meeting.summary.isEmpty)
                         Button("Copy Transcript") {
-                            copyText(TranscriptSegment.plainText(meeting.segments))
+                            copyText(TranscriptSegment.plainText(shownSegments, includeTimestamps: showTimestamps))
                         }
                         .disabled(meeting.segments.isEmpty)
                         Button("Export…") {
                             saveTextFile(
-                                TranscriptExport.markdown(title: meeting.title, date: meeting.startedAt, attendees: attendeeList, location: locationLabel, segments: meeting.segments, summary: meeting.summary),
+                                TranscriptExport.markdown(title: meeting.title, date: meeting.startedAt, attendees: attendeeList, location: locationLabel, segments: shownSegments, summary: meeting.summary, includeTimestamps: showTimestamps),
                                 fileName: TranscriptExport.fileName(title: meeting.title, date: meeting.startedAt)
                             )
                         }
@@ -765,8 +773,8 @@ struct MeetingsPage: View {
                 .sheet(isPresented: $showSpeakerNames) {
                     SpeakerNamesSheet(meeting: meeting)
                 }
-                if !meeting.audioFileName.isEmpty, SessionAudioStore.exists(fileName: meeting.audioFileName) {
-                    MeetingAudioPlayer(url: SessionAudioStore.url(fileName: meeting.audioFileName))
+                if hasAudio {
+                    MeetingAudioPlayer(url: SessionAudioStore.url(fileName: meeting.audioFileName), seekRequest: $seekRequest)
                 }
                 if !meeting.suggestionList.isEmpty {
                     VStack(alignment: .leading, spacing: Space.sm) {
@@ -777,6 +785,27 @@ struct MeetingsPage: View {
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                if !meeting.segments.isEmpty {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: Space.sm) {
+                            ForEach(SpeakerNames.distinctNames(segments: meeting.segments), id: \.self) { name in
+                                Button {
+                                    showSpeakerNames = true
+                                } label: {
+                                    Label(name, systemImage: "person.fill")
+                                        .font(.caption.weight(.medium))
+                                }
+                                .buttonStyle(ChipButtonStyle(selected: false))
+                                .help("Name the speakers")
+                            }
+                        }
+                    }
+                    if !meeting.diarizationNote.isEmpty {
+                        Label(meeting.diarizationNote, systemImage: "info.circle")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
                 Picker("View", selection: $tab) {
                     Text("Transcript").tag("Transcript")
@@ -793,6 +822,18 @@ struct MeetingsPage: View {
                 case "Summary":
                     ScrollView {
                         VStack(alignment: .leading, spacing: Space.lg) {
+                            HStack(spacing: Space.sm) {
+                                Button {
+                                    regenerating = true
+                                    MeetingImporter.summarize(meeting: meeting) { regenerating = false }
+                                } label: {
+                                    Label(regenerating ? "Writing…" : "Regenerate Summary", systemImage: "arrow.clockwise")
+                                }
+                                .buttonStyle(QuietButtonStyle())
+                                .disabled(regenerating || meeting.segments.isEmpty)
+                                if regenerating { ProgressView().controlSize(.small) }
+                                Spacer()
+                            }
                             if meeting.summary.isEmpty {
                                 Text("No summary yet. It is written when the call stops, if a model is reachable.")
                             } else {
@@ -806,12 +847,91 @@ struct MeetingsPage: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 default:
-                    ScrollView {
-                        TranscriptBlock(segments: meeting.segments, fontSize: transcriptFontSize)
+                    VStack(alignment: .leading, spacing: Space.sm) {
+                        HStack(spacing: Space.sm) {
+                            Button {
+                                showTimestamps.toggle()
+                            } label: {
+                                Label(showTimestamps ? "Hide Timestamps" : "Show Timestamps", systemImage: "clock")
+                            }
+                            .buttonStyle(QuietButtonStyle())
+                            .help("Show when each line was said, counted from the start of the session. When the session audio is saved, tap a line to hear that moment.")
+                            Spacer()
+                            if meeting.hasCleanedTranscript {
+                                Picker("Transcript version", selection: $showCleaned) {
+                                    Text("Original").tag(false)
+                                    Text("Cleaned").tag(true)
+                                }
+                                .pickerStyle(.segmented)
+                                .labelsHidden()
+                                .frame(width: 200)
+                            }
+                            Button {
+                                cleaning = true
+                                cleanFailed = false
+                                TranscriptCleaner.clean(meeting: meeting) { success in
+                                    cleaning = false
+                                    cleanFailed = !success
+                                    if success { showCleaned = true }
+                                }
+                            } label: {
+                                Label(cleaning ? "Cleaning…" : "Clean Transcript", systemImage: "sparkles")
+                            }
+                            .buttonStyle(QuietButtonStyle())
+                            .disabled(cleaning || meeting.segments.isEmpty)
+                            if cleaning { ProgressView().controlSize(.small) }
+                        }
+                        if showCleaned && meeting.hasCleanedTranscript {
+                            Label("Viewing cleaned transcript. The original is kept and never overwritten.", systemImage: "sparkles")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        if cleanFailed {
+                            Text("The cleanup did not finish. The original transcript is unchanged.")
+                                .font(.caption)
+                                .foregroundStyle(.red)
+                        }
+                        if showTimestamps {
+                            ScrollView {
+                                LazyVStack(alignment: .leading, spacing: Space.sm) {
+                                    ForEach(shownSegments.filter(\.isFinal)) { segment in
+                                        HStack(alignment: .top, spacing: Space.sm) {
+                                            if hasAudio, let start = segment.startOffset {
+                                                Button {
+                                                    seekRequest = max(0, start - 2)
+                                                } label: {
+                                                    Text(TranscriptTime.label(seconds: start))
+                                                        .font(.caption.monospacedDigit())
+                                                        .frame(width: 48, alignment: .trailing)
+                                                }
+                                                .buttonStyle(.plain)
+                                                .foregroundStyle(.secondary)
+                                                .help("Play from just before this line")
+                                            } else {
+                                                Text(segment.startOffset.map { TranscriptTime.label(seconds: $0) } ?? "")
+                                                    .font(.caption.monospacedDigit())
+                                                    .foregroundStyle(.secondary)
+                                                    .frame(width: 48, alignment: .trailing)
+                                            }
+                                            TranscriptRow(segment: segment)
+                                        }
+                                    }
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                        } else {
+                            ScrollView {
+                                TranscriptBlock(segments: shownSegments, fontSize: transcriptFontSize)
+                            }
+                        }
                     }
                 }
             }
             .padding(Space.margin)
+            .onChange(of: meeting.id) { _, _ in
+                showCleaned = false
+                cleanFailed = false
+            }
         } else {
             ContentUnavailableView("No Meeting Selected", systemImage: "sidebar.right")
         }
@@ -841,6 +961,9 @@ struct SpeakerNamesSheet: View {
             Text("Name the Speakers")
                 .font(.title3.weight(.semibold))
             Text("These are the names the transcript shows now. Change one and every line from that speaker follows, in this view, in the export, and in the text the summary is written from. Only name someone you know was speaking.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text("An existing summary or follow-up keeps the names it was written with. Regenerate the summary from the Summary tab to refresh it.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
             VStack(alignment: .leading, spacing: Space.md) {
@@ -912,6 +1035,10 @@ struct SpeakerNamesSheet: View {
 /// in Finder for anything the player cannot do.
 struct MeetingAudioPlayer: View {
     let url: URL
+    /// A moment another view asks the player to jump to, in seconds:
+    /// tapping a transcript timestamp sets it, the player seeks,
+    /// plays, and clears it.
+    var seekRequest: Binding<Double?> = .constant(nil)
     @State private var player: AVPlayer?
     @State private var isPlaying = false
     @State private var isScrubbing = false
@@ -946,6 +1073,14 @@ struct MeetingAudioPlayer: View {
         }
         .onAppear(perform: setUp)
         .onDisappear(perform: tearDown)
+        .onChange(of: seekRequest.wrappedValue) { _, newValue in
+            if let newValue {
+                seek(to: newValue)
+                player?.play()
+                isPlaying = true
+                seekRequest.wrappedValue = nil
+            }
+        }
     }
 
     private func setUp() {

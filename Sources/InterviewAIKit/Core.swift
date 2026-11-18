@@ -56,8 +56,30 @@ public struct TranscriptSegment: Codable, Equatable, Identifiable, Sendable {
     }
 
     /// Plain transcript for prompts and export: one "Them: ..." line each.
-    public static func plainText(_ segments: [TranscriptSegment]) -> String {
-        segments.filter(\.isFinal).map { "\($0.speakerName): \($0.text)" }.joined(separator: "\n")
+    /// With timestamps on, a line that knows when it started carries
+    /// "[12:40] " in front of the name, the shape the meeting view
+    /// shows and the shape a reader can seek the audio with.
+    public static func plainText(_ segments: [TranscriptSegment], includeTimestamps: Bool = false) -> String {
+        segments.filter(\.isFinal).map { segment in
+            if includeTimestamps, let start = segment.startOffset {
+                return "[\(TranscriptTime.label(seconds: start))] \(segment.speakerName): \(segment.text)"
+            }
+            return "\(segment.speakerName): \(segment.text)"
+        }.joined(separator: "\n")
+    }
+}
+
+/// A position in a session, written the way transcript timestamps
+/// are: "0:07" under an hour, "1:05:12" past it. Pure formatting,
+/// so it is unit tested.
+public enum TranscriptTime {
+    public static func label(seconds: Double) -> String {
+        let total = max(0, Int(seconds.rounded()))
+        func pad(_ value: Int) -> String { value < 10 ? "0\(value)" : "\(value)" }
+        if total >= 3600 {
+            return "\(total / 3600):\(pad((total % 3600) / 60)):\(pad(total % 60))"
+        }
+        return "\(total / 60):\(pad(total % 60))"
     }
 }
 

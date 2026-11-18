@@ -32,6 +32,14 @@ final class Meeting {
     /// Automatic Suggestions given during the session, JSON-encoded
     /// [Suggestion]. Empty when none were given or the feature was off.
     var suggestionsJSON: String = ""
+    /// The Clean Transcript, JSON-encoded [TranscriptSegment], kept
+    /// beside the original transcript, which is never overwritten.
+    /// Empty until the user runs Clean Transcript on this meeting.
+    var cleanedTranscriptJSON: String = ""
+    /// Why speaker labels are missing or partial on this meeting, in
+    /// plain words (see DiarizationNotes). Empty when separation
+    /// worked or was never attempted.
+    var diarizationNote: String = ""
     var uuid: UUID = UUID()
 
     init(title: String, modeID: String, modeName: String) {
@@ -42,6 +50,8 @@ final class Meeting {
 
     var segments: [TranscriptSegment] { TranscriptSegment.decode(transcriptJSON) }
     var suggestionList: [Suggestion] { Suggestion.decode(suggestionsJSON) }
+    var cleanedSegments: [TranscriptSegment] { TranscriptSegment.decode(cleanedTranscriptJSON) }
+    var hasCleanedTranscript: Bool { !cleanedSegments.isEmpty }
 }
 
 @Model

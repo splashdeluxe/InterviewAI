@@ -372,24 +372,36 @@ final class LiveSession {
         guard samples.count > 16_000 * 20 else {
             // Too short to diarize, but a single known name still
             // names the other side's lines that carry no name yet.
+            var applied = false
             if let knownSingle {
                 let updated = SpeakerNames.applying(segments: segments, mapping: ["Them": knownSingle])
                 if updated != segments {
                     meeting.transcriptJSON = TranscriptSegment.encode(updated)
                     try? meeting.modelContext?.save()
+                    applied = true
                 }
+            }
+            if !applied, segments.contains(where: { $0.channel == "them" && $0.isFinal }) {
+                meeting.diarizationNote = DiarizationNotes.tooShort
+                try? meeting.modelContext?.save()
             }
             return
         }
         Task {
             guard let ranges = try? await DiarizationRuntime.shared.diarize(samples: samples),
                   !ranges.isEmpty else {
+                var applied = false
                 if let knownSingle {
                     let updated = SpeakerNames.applying(segments: segments, mapping: ["Them": knownSingle])
                     if updated != segments {
                         meeting.transcriptJSON = TranscriptSegment.encode(updated)
                         try? meeting.modelContext?.save()
+                        applied = true
                     }
+                }
+                if !applied {
+                    meeting.diarizationNote = DiarizationNotes.unavailable
+                    try? meeting.modelContext?.save()
                 }
                 return
             }
@@ -421,6 +433,12 @@ final class LiveSession {
             }
             if changed {
                 meeting.transcriptJSON = TranscriptSegment.encode(updated)
+                try? meeting.modelContext?.save()
+            }
+            // The collector holds one hour; past it, later voices
+            // were never checked, and the meeting says so.
+            if samples.count >= 16_000 * 60 * 60 - 16_000 {
+                meeting.diarizationNote = DiarizationNotes.firstHourOnly
                 try? meeting.modelContext?.save()
             }
             // The evidence pass for everyone still numbered.
