@@ -619,6 +619,10 @@ struct MeetingsPage: View {
     @State private var cleanFailed = false
     @State private var cleanTask: Task<Void, Never>? = nil
     @State private var cleanProgress: (done: Int, total: Int)? = nil
+    @State private var findingQuestions = false
+    @State private var questionsFailed = false
+    @State private var questionTask: Task<Void, Never>? = nil
+    @State private var questionProgress: (done: Int, total: Int)? = nil
     @State private var regenerating = false
     @State private var seekRequest: Double? = nil
     @AppStorage("reading.transcriptFontSize") private var transcriptFontSize = 14.0
@@ -844,6 +848,7 @@ struct MeetingsPage: View {
                     Text("Transcript").tag("Transcript")
                     Text("Notes").tag("Notes")
                     Text("Summary").tag("Summary")
+                    Text("Questions").tag("Questions")
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
@@ -878,6 +883,96 @@ struct MeetingsPage: View {
                             }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                case "Questions":
+                    VStack(alignment: .leading, spacing: Space.sm) {
+                        HStack(spacing: Space.sm) {
+                            Button {
+                                findingQuestions = true
+                                questionsFailed = false
+                                questionProgress = nil
+                                questionTask = QuestionFinder.find(meeting: meeting, onProgress: { done, total in
+                                    questionProgress = (done, total)
+                                }) { success in
+                                    findingQuestions = false
+                                    questionProgress = nil
+                                    questionTask = nil
+                                    questionsFailed = !success
+                                }
+                            } label: {
+                                Label(findingQuestions ? (questionProgress.map { "Finding… \($0.done) of \($0.total)" } ?? "Finding…") : (meeting.questionsExtracted ? "Find Questions Again" : "Find Questions"), systemImage: "questionmark.bubble")
+                            }
+                            .buttonStyle(QuietButtonStyle())
+                            .disabled(findingQuestions || meeting.segments.isEmpty)
+                            if findingQuestions {
+                                ProgressView().controlSize(.small)
+                                Button("Cancel") {
+                                    questionTask?.cancel()
+                                    questionTask = nil
+                                    findingQuestions = false
+                                    questionProgress = nil
+                                }
+                                .buttonStyle(QuietButtonStyle())
+                            }
+                            Spacer()
+                        }
+                        if questionsFailed {
+                            Text("Finding the questions did not finish. The transcript is unchanged.")
+                                .font(.caption)
+                                .foregroundStyle(.red)
+                        }
+                        if meeting.questionPairs.isEmpty {
+                            Text(meeting.questionsExtracted
+                                 ? "No questions to you were found in this transcript."
+                                 : "The questions the other side asked, with the answers you gave, pulled out of the transcript and kept apart from it. Finding them runs on this Mac and can take a few minutes on a long call.")
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                        } else {
+                            ScrollView {
+                                LazyVStack(alignment: .leading, spacing: Space.md) {
+                                    ForEach(Array(meeting.questionPairs.enumerated()), id: \.offset) { index, pair in
+                                        if index > 0 { Divider() }
+                                        HStack(alignment: .top, spacing: Space.sm) {
+                                            if hasAudio {
+                                                Button {
+                                                    seekRequest = max(0, pair.atSeconds - 2)
+                                                } label: {
+                                                    Text(TranscriptTime.label(seconds: pair.atSeconds))
+                                                        .font(.caption.monospacedDigit())
+                                                        .frame(width: 48, alignment: .trailing)
+                                                }
+                                                .buttonStyle(.plain)
+                                                .foregroundStyle(.secondary)
+                                                .help("Play from just before this question")
+                                            } else {
+                                                Text(TranscriptTime.label(seconds: pair.atSeconds))
+                                                    .font(.caption.monospacedDigit())
+                                                    .foregroundStyle(.secondary)
+                                                    .frame(width: 48, alignment: .trailing)
+                                            }
+                                            VStack(alignment: .leading, spacing: Space.xs) {
+                                                Text(pair.asker)
+                                                    .font(.caption.weight(.semibold))
+                                                    .foregroundStyle(.secondary)
+                                                Text(pair.question)
+                                                    .font(.body.weight(.semibold))
+                                                    .textSelection(.enabled)
+                                                if pair.answer.isEmpty {
+                                                    Text("No answer in the transcript.")
+                                                        .font(.caption)
+                                                        .foregroundStyle(.secondary)
+                                                } else {
+                                                    Text(pair.answer)
+                                                        .foregroundStyle(.secondary)
+                                                        .textSelection(.enabled)
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                        }
                     }
                 default:
                     VStack(alignment: .leading, spacing: Space.sm) {
@@ -978,6 +1073,7 @@ struct MeetingsPage: View {
             .onChange(of: meeting.id) { _, _ in
                 showCleaned = false
                 cleanFailed = false
+                questionsFailed = false
             }
         } else {
             ContentUnavailableView("No Meeting Selected", systemImage: "sidebar.right")

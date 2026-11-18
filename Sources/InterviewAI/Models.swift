@@ -36,6 +36,14 @@ final class Meeting {
     /// beside the original transcript, which is never overwritten.
     /// Empty until the user runs Clean Transcript on this meeting.
     var cleanedTranscriptJSON: String = ""
+    /// The questions the other side asked on this call, with the
+    /// answers given, JSON-encoded [QuestionPair], pulled out of
+    /// the transcript by Find Questions and fenced against the
+    /// real lines. Empty until the run finds any.
+    var questionsJSON: String = ""
+    /// Find Questions has completed a run on this meeting, so an
+    /// empty list means "looked, none found", not "never looked".
+    var questionsExtracted: Bool = false
     /// Why speaker labels are missing or partial on this meeting, in
     /// plain words (see DiarizationNotes). Empty when separation
     /// worked or was never attempted.
@@ -57,6 +65,7 @@ final class Meeting {
     var suggestionList: [Suggestion] { Suggestion.decode(suggestionsJSON) }
     var cleanedSegments: [TranscriptSegment] { TranscriptSegment.decode(cleanedTranscriptJSON) }
     var hasCleanedTranscript: Bool { !cleanedSegments.isEmpty }
+    var questionPairs: [QuestionPair] { QuestionPair.decode(questionsJSON) }
 }
 
 @Model
