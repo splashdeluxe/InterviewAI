@@ -128,6 +128,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // window; quitting is the Quit command or Command-Q.
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
+    /// A quit during a live session asks first, through the Session
+    /// Controls: End saves the meeting and then the app quits, Delete
+    /// throws the session away and quits, Cancel keeps everything
+    /// running. Without this, quitting mid-call lost the session
+    /// without a word.
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard let session = AppModel.current?.session, session.isListening else {
+            return .terminateNow
+        }
+        SessionControlsWindow.show(session: session, quitMode: true) { proceed in
+            NSApp.reply(toApplicationShouldTerminate: proceed)
+        }
+        return .terminateLater
+    }
+
     /// The self-test's result becomes the exit code, after a normal quit.
     func applicationWillTerminate(_ notification: Notification) {
         if SelfTest.requested { exit(SelfTest.exitCode) }

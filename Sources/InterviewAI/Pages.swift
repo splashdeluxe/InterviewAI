@@ -24,15 +24,15 @@ struct LivePage: View {
         let session = model.session
         VStack(spacing: 0) {
             HStack(spacing: Space.md) {
-                StatusDot(listening: session.isListening)
+                StatusDot(listening: session.isListening && !session.isPaused)
                 VStack(alignment: .leading, spacing: 0) {
-                    Text(session.isListening ? "Listening" : "Ready")
+                    Text(session.isPaused ? "Paused" : session.isListening ? "Listening" : "Ready")
                         .font(.callout.weight(.semibold))
                     Text(session.status)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
-                    if session.audioRecordingActive {
+                    if session.audioRecordingActive && !session.isPaused {
                         Label("Recording audio", systemImage: "record.circle")
                             .font(.caption)
                             .foregroundStyle(.red)
@@ -54,7 +54,9 @@ struct LivePage: View {
                     .help("Show or hide the floating overlay (⌘⇧H)")
                 Button(session.isListening ? "Stop" : "Start Listening", systemImage: session.isListening ? "stop.circle" : "waveform") {
                     if session.isListening {
-                        session.stop()
+                        // Stop opens the Session Controls: end and
+                        // save, pause where it stands, or delete.
+                        SessionControlsWindow.show(session: session, quitMode: false)
                     } else {
                         // Setup first: what is this call, is it an
                         // appointment or not, which mode, save the

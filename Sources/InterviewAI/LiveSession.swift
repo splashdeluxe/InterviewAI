@@ -9,6 +9,19 @@ final class LiveSession {
 
     @ObservationIgnored private let audio = AudioEngine()
     var isListening = false
+    /// A paused session is still listening: capture is stopped, the
+    /// transcript and the session clock are frozen, and Resume picks
+    /// the same session up. Set by pause()/resume(), never directly.
+    var isPaused = false
+    /// The pause-aware session clock: offsets and the saved duration
+    /// read it, so paused time never counts as session time.
+    @ObservationIgnored private var clock: SessionClock?
+    /// The capture settings chosen at start, reused verbatim by a
+    /// resume so a paused session comes back exactly as it left.
+    @ObservationIgnored private var captureLocale = "en-US"
+    @ObservationIgnored private var captureEngine: TranscriptionEngineKind = .parakeetUltra
+    @ObservationIgnored private var captureWhisper = "large-v3-v20240930_626MB"
+    @ObservationIgnored private var captureDiarize = true
     var status = "Not listening"
     var finalSegments: [TranscriptSegment] = []
     /// The current unfinished line per channel ("them", "me").
@@ -87,6 +100,7 @@ final class LiveSession {
     }
 
     var duration: Double {
+        if let clock { return clock.elapsed(at: Date.now) }
         guard let startedAt else { return 0 }
         return Date.now.timeIntervalSince(startedAt)
     }
@@ -158,19 +172,14 @@ final class LiveSession {
         answer = ""
         answerError = nil
         startedAt = Date.now
+        clock = SessionClock(startedAt: startedAt ?? Date.now)
+        isPaused = false
         isListening = true
         status = "Starting"
-        audio.onSegment = { [weak self] channel, text, isFinal, seconds in
-            DispatchQueue.main.async { self?.receive(channel: channel, text: text, isFinal: isFinal, seconds: seconds) }
-        }
-        audio.onStatus = { [weak self] message in
-            DispatchQueue.main.async { self?.status = message }
-        }
-        mySpeakerFirstName = SpeakerNames.firstName(of: Self.myNameSetting)
-        let locale = UserDefaults.standard.string(forKey: "speech.locale") ?? "en-US"
-        let engineKind = TranscriptionEngineKind(rawValue: UserDefaults.standard.string(forKey: "transcription.engine") ?? "parakeetUltra") ?? .parakeetUltra
-        let whisperModel = UserDefaults.standard.string(forKey: "transcription.whisperModel") ?? "large-v3-v20240930_626MB"
-        let diarize = UserDefaults.standard.object(forKey: "transcription.diarize") as? Bool ?? true
+        captureLocale = UserDefaults.standard.string(forKey: "speech.locale") ?? "en-US"
+        captureEngine = TranscriptionEngineKind(rawValue: UserDefaults.standard.string(forKey: "transcription.engine") ?? "parakeetUltra") ?? .parakeetUltra
+        captureWhisper = UserDefaults.standard.string(forKey: "transcription.whisperModel") ?? "large-v3-v20240930_626MB"
+        captureDiarize = UserDefaults.standard.object(forKey: "transcription.diarize") as? Bool ?? true
         audioWasRequested = audioOverride ?? UserDefaults.standard.bool(forKey: "sessionAudio.enabled")
         audioOverride = nil
         otherSideWarning = nil
@@ -185,24 +194,102 @@ final class LiveSession {
             }
         }
         recorder = activeRecorder
-        audio.start(localeIdentifier: locale, engine: engineKind, whisperModel: whisperModel, diarize: diarize, recorder: activeRecorder)
         suggestions = []
         currentSuggestion = nil
         lastSuggestionCycle = nil
+        beginCapture(resume: false)
+        startSuggestionLoop()
+    }
+
+    /// Wire the engine's callbacks and start capturing with the
+    /// session's stored settings. A resume keeps the recorder and the
+    /// diarization collector, so the session continues as one.
+    private func beginCapture(resume: Bool) {
+        audio.onSegment = { [weak self] channel, text, isFinal, seconds in
+            DispatchQueue.main.async { self?.receive(channel: channel, text: text, isFinal: isFinal, seconds: seconds) }
+        }
+        audio.onStatus = { [weak self] message in
+            DispatchQueue.main.async { self?.status = message }
+        }
+        mySpeakerFirstName = SpeakerNames.firstName(of: Self.myNameSetting)
+        audio.start(localeIdentifier: captureLocale, engine: captureEngine, whisperModel: captureWhisper, diarize: captureDiarize, recorder: recorder, keepCollector: resume)
+    }
+
+    private func startSuggestionLoop() {
         suggestionTask?.cancel()
         suggestionTask = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(15))
-                guard !Task.isCancelled, let self, isListening else { return }
+                guard !Task.isCancelled, let self, isListening, !isPaused else { return }
                 checkOtherSide()
                 await runSuggestionCycleIfDue()
             }
         }
     }
 
+    /// Freeze the session: capture stops, the clock stops, the
+    /// transcript stays. Nothing is saved and nothing is lost; the
+    /// microphones and screen capture are released while paused.
+    func pause() {
+        guard isListening, !isPaused else { return }
+        clock?.beginPause(at: Date.now)
+        isPaused = true
+        settleTask?.cancel()
+        suggestionTask?.cancel()
+        audio.stop()
+        partials = [:]
+        status = "Paused"
+    }
+
+    /// Pick a paused session up where it left off: same transcript,
+    /// same recorder, same diarization timeline, clock running again.
+    func resume() {
+        guard isListening, isPaused else { return }
+        clock?.endPause(at: Date.now)
+        isPaused = false
+        status = "Starting"
+        beginCapture(resume: true)
+        startSuggestionLoop()
+    }
+
+    /// Throw the session away: capture stops, the recording is
+    /// deleted, and nothing is saved. The user's Delete choice in the
+    /// Session Controls, never a fallback for a failed save.
+    func discard() {
+        guard isListening else { return }
+        isListening = false
+        isPaused = false
+        clock = nil
+        settleTask?.cancel()
+        suggestionTask?.cancel()
+        answerTask?.cancel()
+        audio.stop()
+        if let recorder, let pendingAudioName {
+            recorder.stop { _ in SessionAudioStore.delete(fileName: pendingAudioName) }
+        }
+        recorder = nil
+        pendingAudioName = nil
+        audioWasRequested = false
+        audioRecordingActive = false
+        finalSegments = []
+        partials = [:]
+        suggestions = []
+        currentSuggestion = nil
+        answer = ""
+        answerError = nil
+        otherSideWarning = nil
+        linkedEvent = nil
+        startedAt = nil
+        status = "Session deleted. Nothing was saved."
+    }
+
     func stop() {
         guard isListening else { return }
         isListening = false
+        // Ending from a pause: the clock already excludes the open
+        // pause from the duration, and the engine is already stopped,
+        // so the save below runs exactly as an unpaused stop.
+        isPaused = false
         settleTask?.cancel()
         suggestionTask?.cancel()
         audio.stop()
@@ -283,9 +370,9 @@ final class LiveSession {
             if channel == "me", !mySpeakerFirstName.isEmpty {
                 segment.speakerLabel = mySpeakerFirstName
             }
-            if let seconds, let startedAt {
+            if let seconds, let clock {
                 segment.duration = seconds
-                segment.startOffset = max(0, Date.now.timeIntervalSince(startedAt) - seconds)
+                segment.startOffset = max(0, clock.elapsed(at: Date.now) - seconds)
             }
             finalSegments.append(segment)
             if channel == "them" { otherSideWarning = nil }

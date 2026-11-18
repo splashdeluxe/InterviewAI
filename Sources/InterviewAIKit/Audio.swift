@@ -117,9 +117,13 @@ public final class AudioEngine: @unchecked Sendable {
                       engine engineKind: TranscriptionEngineKind = .appleSpeech,
                       whisperModel: String = "large-v3-v20240930_626MB",
                       diarize: Bool = false,
-                      recorder: SessionAudioRecorder? = nil) {
+                      recorder: SessionAudioRecorder? = nil,
+                      keepCollector: Bool = false) {
         guard !isRunning else { return }
-        collector = diarize ? ThemCollector() : nil
+        // A resumed session keeps the collector it already filled, so
+        // the other side's audio stays one continuous timeline across
+        // the pause; a fresh start always begins with an empty one.
+        collector = diarize ? (keepCollector ? (collector ?? ThemCollector()) : ThemCollector()) : nil
         self.recorder = recorder
         let emit: (String, String, Bool, Double?) -> Void = { [weak self] ch, text, final, seconds in
             self?.onSegment?(ch, text, final, seconds)

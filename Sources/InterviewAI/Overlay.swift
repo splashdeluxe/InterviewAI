@@ -260,7 +260,7 @@ struct OverlayView: View {
             // glyph, because a surface you can simply grab does not
             // need to advertise a handle.
             HStack(spacing: Space.sm) {
-                StatusDot(listening: session.isListening)
+                StatusDot(listening: session.isListening && !session.isPaused)
                     .fixedSize()
                 Text(session.status)
                     .font(.callout.weight(.medium))
@@ -273,7 +273,7 @@ struct OverlayView: View {
                     .lineLimit(1)
                 Button(session.isListening ? "Stop" : "Start") {
                     if session.isListening {
-                        session.stop()
+                        SessionControlsWindow.show(session: session, quitMode: false)
                     } else {
                         // Starting goes through the setup sheet on the
                         // main window: what is this call, which mode,

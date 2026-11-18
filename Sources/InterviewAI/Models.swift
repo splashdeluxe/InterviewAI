@@ -238,8 +238,14 @@ final class AppModel {
         didSet { UserDefaults.standard.set(activeModeID, forKey: "mode.active") }
     }
 
+    /// The one live model, for the app delegate's quit guard. The
+    /// delegate is created before the SwiftUI scene, so it reaches
+    /// the session through here instead of the environment.
+    static weak var current: AppModel?
+
     init(container: ModelContainer) {
         self.container = container
+        AppModel.current = self
         session.model = self
         overlay.model = self
         phoneDisplay.bind(session: session)
