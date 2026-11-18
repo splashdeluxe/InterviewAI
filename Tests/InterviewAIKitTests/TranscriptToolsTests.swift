@@ -69,6 +69,16 @@ struct TranscriptToolsTests {
         #expect(CleanTranscriptPrompts.system.contains("never summarize"))
     }
 
+    @Test("Clean prompt forbids translating, in the system text and again after the transcript")
+    func cleanPromptKeepsLanguage() {
+        #expect(CleanTranscriptPrompts.system.contains("never translate"))
+        let user = CleanTranscriptPrompts.user(
+            confirmedNames: [], attendees: [], summary: "",
+            transcript: "Alex: Warum bist du auf der Suche."
+        )
+        #expect(user.hasSuffix("Never translate."))
+    }
+
     @Test("Cleaned output parses back to named segments, markers and fences dropped")
     func cleanedParsing() {
         let raw = """

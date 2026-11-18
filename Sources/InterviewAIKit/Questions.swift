@@ -46,7 +46,9 @@ public enum QuestionPrompts {
         You read the transcript of a finished conversation and find the questions the other side asked the user. \
         The user is the speaker labelled "Me". A question counts when the other side asks the user something and \
         waits for an answer: a direct question, or a request like "tell me about yourself". Back-channels like \
-        "mm-hmm" or "yeah?", rhetorical questions, and questions the user asked do not count. For each question, \
+        "mm-hmm" or "yeah?", rhetorical questions, and questions the user asked do not count. Statements, plans, \
+        greetings, news, and small talk are not questions, even when they end with "okay?" or "right?". When in \
+        doubt, leave it out. For each question, \
         give the answer the user actually gave: their own following lines, joined, word for word. If the user \
         never answered, give an empty answer. Quote both word for word from the transcript; never polish, never \
         invent, never merge two questions into one. Reply with a JSON array only, no code fences, no commentary: \
@@ -62,10 +64,12 @@ public enum QuestionPrompts {
 /// Turning the model's JSON into fenced question pairs. A pair
 /// survives only when its question quote matches a real line from
 /// the other side (one line, or up to three lines in a row when a
-/// question runs over several), and its answer quote's words are
-/// found in the user's own lines that follow. The asker and the
-/// timestamp always come from the matched line itself, never from
-/// the model.
+/// question runs over several), when the matched lines carry
+/// question evidence (a question mark, a question word, or a
+/// question's verb-first opening), and when its answer quote's
+/// words are found in the user's own lines that follow. The
+/// asker and the timestamp always come from the matched line
+/// itself, never from the model.
 public enum QuestionExtraction {
     private struct Candidate: Decodable {
         let q: String
@@ -78,6 +82,7 @@ public enum QuestionExtraction {
         guard !finals.isEmpty else { return [] }
         let firstAt = finals[0].at
         var usedStarts: Set<Int> = []
+        var seenQuestions: Set<String> = []
         var found: [QuestionPair] = []
 
         for candidate in candidates {
@@ -86,7 +91,11 @@ public enum QuestionExtraction {
             // A real question is a handful of words; a two-word
             // quote would match half the transcript.
             guard normalizedQuestion.count >= 10 else { continue }
+            // The same question quoted twice is one question,
+            // however many spans it matched.
+            guard seenQuestions.insert(normalizedQuestion).inserted else { continue }
             guard let span = matchSpan(normalizedQuestion, in: finals, skipping: usedStarts) else { continue }
+            guard hasQuestionEvidence(span: span, in: finals, normalizedQuestion: normalizedQuestion) else { continue }
             usedStarts.insert(span.start)
             let questionSegment = finals[span.start]
             let answer = verifiedAnswer(candidate.a ?? "", after: span.end, in: finals)
@@ -148,6 +157,41 @@ public enum QuestionExtraction {
         }
         return nil
     }
+
+    /// A matched quote still has to look like a question. The
+    /// speech engine drops question marks often enough that the
+    /// mark alone cannot be the test, so the words carry it too:
+    /// a question word anywhere in the quote, or the verb-first
+    /// opening a question has in German and English, or a direct
+    /// request verb. A plain statement the model proposed anyway
+    /// ("I am all packed already") fails all three and is dropped.
+    private static func hasQuestionEvidence(span: (start: Int, end: Int), in finals: [TranscriptSegment], normalizedQuestion: String) -> Bool {
+        let spanText = finals[span.start...span.end].map(\.text).joined(separator: " ")
+        if spanText.contains("?") { return true }
+        let words = normalizedQuestion.components(separatedBy: " ")
+        guard let first = words.first else { return false }
+        if requestVerbs.contains(first) || openingVerbs.contains(first) { return true }
+        return words.contains { questionWords.contains($0) }
+    }
+
+    private static let questionWords: Set<String> = [
+        "wie", "was", "warum", "weshalb", "wieso", "wann", "wo", "wer", "wen", "wem",
+        "welche", "welcher", "welchem", "welchen",
+        "how", "what", "why", "when", "where", "who", "whom", "which",
+    ]
+
+    private static let openingVerbs: Set<String> = [
+        "kannst", "könntest", "hast", "bist", "ist", "sind", "war", "wird", "würdest",
+        "gibt", "darfst", "musst", "sollst",
+        "can", "could", "would", "will", "do", "does", "did", "is", "are",
+        "have", "has", "should",
+    ]
+
+    private static let requestVerbs: Set<String> = [
+        "erzähl", "erzähle", "sag", "sage", "zeig", "zeige", "gib",
+        "beschreib", "beschreibe", "erklär", "erkläre",
+        "tell", "show", "give", "describe", "explain", "introduce",
+    ]
 
     /// The answer the user gave, kept only when its words are
     /// found in the user's own lines after the question. At least

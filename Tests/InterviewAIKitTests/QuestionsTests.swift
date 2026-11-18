@@ -74,9 +74,46 @@ func questionPairRoundTrip() {
     #expect(QuestionPair.decode("").isEmpty)
 }
 
+@Test("A statement the model proposed anyway is dropped for lack of question evidence")
+func statementDroppedByEvidence() {
+    let segments = [
+        segment("them", "Ich bin jetzt schon total eingepackt und bereit.", offset: 300, label: "Speaker 2"),
+        segment("me", "Alles klar, bis gleich dann.", offset: 312),
+        segment("them", "Ich gehe jetzt vom Hotel ins Zimmer rauf.", offset: 322, label: "Speaker 2"),
+    ]
+    let raw = #"[{"q": "Ich bin jetzt schon total eingepackt und bereit.", "a": "Alles klar, bis gleich dann."}, {"q": "Ich gehe jetzt vom Hotel ins Zimmer rauf.", "a": ""}]"#
+    #expect(QuestionExtraction.pairs(from: raw, segments: segments).isEmpty)
+}
+
+@Test("A question with a question word fences even without a question mark")
+func questionWordWithoutMarkKept() {
+    let segments = [
+        segment("them", "Warum bist du gerade auf der Suche nach was Neuem", offset: 286, label: "Alex"),
+        segment("me", "Weil ich mich weiterentwickeln moechte, ganz einfach.", offset: 298),
+    ]
+    let raw = #"[{"q": "Warum bist du gerade auf der Suche nach was Neuem", "a": "Weil ich mich weiterentwickeln moechte, ganz einfach."}]"#
+    let pairs = QuestionExtraction.pairs(from: raw, segments: segments)
+    #expect(pairs.count == 1)
+    #expect(pairs.first?.answer == "Weil ich mich weiterentwickeln moechte, ganz einfach.")
+}
+
+@Test("The same question quoted twice is kept once")
+func duplicateQuestionKeptOnce() {
+    let segments = [
+        segment("them", "Erzähl mir ein bisschen mehr über die Planungsabteilung.", offset: 533, label: "Alex"),
+        segment("me", "Die Planung steuert die ganze Kette bei uns.", offset: 545),
+        segment("them", "Erzähl mir ein bisschen mehr über die Planungsabteilung.", offset: 548, label: "Alex"),
+    ]
+    let raw = #"[{"q": "Erzähl mir ein bisschen mehr über die Planungsabteilung.", "a": "Die Planung steuert die ganze Kette bei uns."}, {"q": "Erzähl mir ein bisschen mehr über die Planungsabteilung.", "a": ""}]"#
+    let pairs = QuestionExtraction.pairs(from: raw, segments: segments)
+    #expect(pairs.count == 1)
+    #expect(pairs.first?.atSeconds == 533)
+}
+
 @Test("The extraction prompt asks for word-for-word JSON quotes")
 func questionPromptShape() {
     #expect(QuestionPrompts.system.contains("JSON array only"))
     #expect(QuestionPrompts.system.contains("word for word"))
+    #expect(QuestionPrompts.system.contains("small talk are not questions"))
     #expect(QuestionPrompts.user(transcript: "Me: Hi").contains("Transcript:"))
 }

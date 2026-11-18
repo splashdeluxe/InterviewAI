@@ -12,7 +12,8 @@ import Foundation
 public enum CleanTranscriptPrompts {
     public static let system = """
         You clean a meeting transcript. Fix spelling, punctuation, and grammar without changing what was said: \
-        never add, drop, or reword a statement, and never summarize. Write one speaker turn per line, as "Name: text". \
+        never add, drop, or reword a statement, and never summarize. Keep every line in the language it was \
+        spoken in: never translate, not one word, even when a conversation mixes languages. Write one speaker turn per line, as "Name: text". \
         Use the confirmed speaker names given to you. When one person was split into several numbered speakers, \
         give all of their turns the one label that fits them. When the session summary names a participant and a \
         numbered speaker's turns are clearly that person, use their name; when it is not clear, keep the number. \
@@ -31,6 +32,7 @@ public enum CleanTranscriptPrompts {
             parts.append("Session summary, for who the participants are:\n\(String(summary.prefix(2_000)))")
         }
         parts.append("Transcript:\n\(transcript)")
+        parts.append("Reply with the cleaned transcript only, in the same language as the transcript above. Never translate.")
         return parts.joined(separator: "\n\n")
     }
 }
