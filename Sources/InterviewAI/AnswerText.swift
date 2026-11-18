@@ -6,8 +6,9 @@ import InterviewAIKit
 /// line its own row. The first line (the direct answer) sits
 /// larger and semibold; the points below stay at the set size in
 /// secondary ink. The model's bold terms render semibold and,
-/// when Highlight Keywords is on, the bold terms and the figures
-/// (amounts, percents, numbers) wash in wasabi. While the answer
+/// when Highlight Keywords is on, the bold terms in the points
+/// and the figures (amounts, percents, numbers) wash in wasabi;
+/// the lead gets no wash, its size and weight already mark it. While the answer
 /// streams, the line still being written stays dim, so the eye
 /// rests on the finished lines and nothing jumps around. The
 /// base size follows the Font Size setting.
@@ -42,7 +43,10 @@ struct AnswerTextView: View {
                 break
             case .emphasis:
                 piece.font = .system(size: size).weight(.semibold)
-                if highlightKeywords { piece.backgroundColor = Color(hex: 0xE9F056).opacity(0.45) }
+                // The lead line is already larger and semibold, so a
+                // wash over a fully bolded lead would paint the whole
+                // sentence. The wash marks terms in the points below.
+                if highlightKeywords && !lead { piece.backgroundColor = Color(hex: 0xE9F056).opacity(0.45) }
             case .figure:
                 if highlightKeywords { piece.backgroundColor = Color(hex: 0xE9F056).opacity(0.45) }
             }

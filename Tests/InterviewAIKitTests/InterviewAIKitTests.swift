@@ -72,6 +72,13 @@ func promptShapesAnswers() {
     #expect(user.contains("Shape the answer: first line the direct answer in bold"))
 }
 
+@Test("Prompt answers the question asked and forbids claiming events the conversation does not show")
+func promptGroundsAnswers() {
+    let system = PromptBuilder.systemPrompt(modePrompt: "Mode.")
+    #expect(system.contains("Answer the question that was just asked"))
+    #expect(system.contains("Never claim that a talk, a decision, an agreement"))
+}
+
 @Test("Answer lines split for the glance readout, bullets and blanks dropped")
 func answerLinesSplit() {
     let text = "**I led a team of twelve.**\n\n- Peak load: 40 percent in Q3\n• Started in 2019\n* Based in Berlin\n"
