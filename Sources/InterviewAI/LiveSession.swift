@@ -29,6 +29,19 @@ final class LiveSession {
     /// The user picked "just a call" at setup: the save must not go
     /// hunting for a calendar event to attach after the fact.
     var eventDeclined = false
+    /// Who is on the other side, when a source already knows: the
+    /// setup sheet's Talking With field, or the one invited person on
+    /// the session's calendar event. Their lines carry this name from
+    /// the first line on, live, instead of "Them". Empty when nobody
+    /// is known, and the transcript honestly stays generic.
+    var otherSpeakerName = ""
+    /// The user's own first name from Settings, for their lines.
+    @ObservationIgnored private var mySpeakerFirstName = ""
+
+    /// The name the user gave for themself in Settings, General.
+    static var myNameSetting: String {
+        UserDefaults.standard.string(forKey: "speaker.myName") ?? ""
+    }
     /// Set by the views when the user asks to start: the Live page
     /// answers by presenting the setup sheet.
     var setupRequested = false
@@ -99,6 +112,7 @@ final class LiveSession {
             linkedEvent = nil
             sessionContext = ""
             eventDeclined = false
+            otherSpeakerName = ""
             audioOverride = nil
             start()
         }
@@ -110,16 +124,29 @@ final class LiveSession {
         linkedEvent = event
         sessionContext = ""
         eventDeclined = false
+        otherSpeakerName = SpeakerNames.singleOther(
+            attendees: event.attendees, organizer: event.organizer, myName: Self.myNameSetting
+        ) ?? ""
         start()
     }
 
     /// Start with the setup sheet's choices: the event the user
     /// confirmed (or none, for a call that is not an appointment), the
     /// context line they typed, and this session's Save Audio choice.
-    func startPlanned(event: UpcomingEvent?, context: String, saveAudio: Bool) {
+    func startPlanned(event: UpcomingEvent?, context: String, saveAudio: Bool, talkingWith: String = "") {
         linkedEvent = event
         eventDeclined = event == nil
         sessionContext = context.trimmingCharacters(in: .whitespacesAndNewlines)
+        let typed = talkingWith.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !typed.isEmpty {
+            otherSpeakerName = typed
+        } else if let event {
+            otherSpeakerName = SpeakerNames.singleOther(
+                attendees: event.attendees, organizer: event.organizer, myName: Self.myNameSetting
+            ) ?? ""
+        } else {
+            otherSpeakerName = ""
+        }
         audioOverride = saveAudio
         start()
     }
@@ -139,6 +166,7 @@ final class LiveSession {
         audio.onStatus = { [weak self] message in
             DispatchQueue.main.async { self?.status = message }
         }
+        mySpeakerFirstName = SpeakerNames.firstName(of: Self.myNameSetting)
         let locale = UserDefaults.standard.string(forKey: "speech.locale") ?? "en-US"
         let engineKind = TranscriptionEngineKind(rawValue: UserDefaults.standard.string(forKey: "transcription.engine") ?? "parakeetUltra") ?? .parakeetUltra
         let whisperModel = UserDefaults.standard.string(forKey: "transcription.whisperModel") ?? "large-v3-v20240930_626MB"
@@ -239,12 +267,22 @@ final class LiveSession {
             if let echoIndex = EchoFilter.echoIndex(text: trimmed, channel: channel, recent: finalSegments) {
                 if channel == "them" {
                     finalSegments[echoIndex].channel = "them"
+                    // The promoted copy was heard as the user's own
+                    // line, so it may carry their name; as an other
+                    // side line it carries the other name, or none.
+                    finalSegments[echoIndex].speakerLabel = otherSpeakerName.isEmpty ? nil : otherSpeakerName
                     otherSideWarning = nil
                     if autoAnswer, isListening { scheduleAutoAnswer() }
                 }
                 return
             }
             var segment = TranscriptSegment(channel: channel, text: trimmed, isFinal: true)
+            if channel == "them", !otherSpeakerName.isEmpty {
+                segment.speakerLabel = otherSpeakerName
+            }
+            if channel == "me", !mySpeakerFirstName.isEmpty {
+                segment.speakerLabel = mySpeakerFirstName
+            }
             if let seconds, let startedAt {
                 segment.duration = seconds
                 segment.startOffset = max(0, Date.now.timeIntervalSince(startedAt) - seconds)
@@ -314,13 +352,47 @@ final class LiveSession {
     /// After the call, work out who spoke when on the other side and
     /// label the saved lines Speaker 1, Speaker 2, and so on. Runs
     /// beside the summary; the meeting updates in place when it lands.
+    /// Then the names: when exactly one person is known to have been
+    /// on the other side, their name replaces the generic label. When
+    /// several people were invited, the deep model may match the
+    /// numbered speakers to invited names, but only with proof inside
+    /// the transcript, and only ever from the invited list
+    /// (SpeakerNames.parseMapping enforces the list), so a name can
+    /// never be invented here.
     private func diarize(meeting: Meeting) {
-        let samples = audio.themAudio
-        guard samples.count > 16_000 * 20 else { return }
         let segments = meeting.segments
+        let attendeeNames = meeting.attendees.isEmpty ? [] : meeting.attendees.components(separatedBy: ", ")
+        let candidates = SpeakerNames.candidates(attendees: attendeeNames, myName: Self.myNameSetting)
+        let knownSingle = otherSpeakerName.isEmpty
+            ? SpeakerNames.singleOther(attendees: attendeeNames, myName: Self.myNameSetting)
+            : otherSpeakerName
+        var passCandidates = candidates
+        if let knownSingle, !passCandidates.contains(knownSingle) { passCandidates.append(knownSingle) }
+        let samples = audio.themAudio
+        guard samples.count > 16_000 * 20 else {
+            // Too short to diarize, but a single known name still
+            // names the other side's lines that carry no name yet.
+            if let knownSingle {
+                let updated = SpeakerNames.applying(segments: segments, mapping: ["Them": knownSingle])
+                if updated != segments {
+                    meeting.transcriptJSON = TranscriptSegment.encode(updated)
+                    try? meeting.modelContext?.save()
+                }
+            }
+            return
+        }
         Task {
             guard let ranges = try? await DiarizationRuntime.shared.diarize(samples: samples),
-                  !ranges.isEmpty else { return }
+                  !ranges.isEmpty else {
+                if let knownSingle {
+                    let updated = SpeakerNames.applying(segments: segments, mapping: ["Them": knownSingle])
+                    if updated != segments {
+                        meeting.transcriptJSON = TranscriptSegment.encode(updated)
+                        try? meeting.modelContext?.save()
+                    }
+                }
+                return
+            }
             let windows: [(start: Double, end: Double)?] = segments.map { segment in
                 guard segment.channel == "them",
                       let start = segment.startOffset, let duration = segment.duration else { return nil }
@@ -330,14 +402,46 @@ final class LiveSession {
             var updated = segments
             var changed = false
             for (index, label) in labels.enumerated() {
-                if let label, updated[index].speakerLabel != label {
+                // A line already carrying the known single name keeps
+                // it until the evidence pass below says otherwise:
+                // overwriting it with Speaker 1 and failing to map
+                // back would take a real name away.
+                if let label, updated[index].speakerLabel != label,
+                   knownSingle == nil || updated[index].speakerLabel != knownSingle {
                     updated[index].speakerLabel = label
                     changed = true
                 }
             }
-            guard changed else { return }
-            meeting.transcriptJSON = TranscriptSegment.encode(updated)
-            try? meeting.modelContext?.save()
+            // One voice on the other side and one known person: the
+            // numbered label becomes the name.
+            let themNames = Set(updated.filter { $0.channel == "them" }.map(\.speakerName))
+            if themNames.count == 1, let only = themNames.first, let knownSingle, only != knownSingle {
+                updated = SpeakerNames.applying(segments: updated, mapping: [only: knownSingle])
+                changed = true
+            }
+            if changed {
+                meeting.transcriptJSON = TranscriptSegment.encode(updated)
+                try? meeting.modelContext?.save()
+            }
+            // The evidence pass for everyone still numbered.
+            let generic = SpeakerNames.distinctNames(segments: updated).filter { $0.hasPrefix("Speaker ") }
+            guard !generic.isEmpty, !passCandidates.isEmpty else { return }
+            let outcome = try? await DeepWork.complete(
+                system: SpeakerNamePrompts.system,
+                user: SpeakerNamePrompts.user(
+                    labels: generic, candidates: passCandidates,
+                    transcript: TranscriptSegment.plainText(updated)
+                ),
+                maxTokens: 200
+            )
+            guard let outcome else { return }
+            let mapping = SpeakerNames.parseMapping(outcome.text, labels: generic, candidates: passCandidates)
+            guard !mapping.isEmpty else { return }
+            let named = SpeakerNames.applying(segments: updated, mapping: mapping)
+            if named != updated {
+                meeting.transcriptJSON = TranscriptSegment.encode(named)
+                try? meeting.modelContext?.save()
+            }
         }
     }
 
@@ -422,7 +526,10 @@ final class LiveSession {
         let trimmed = question.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         // A typed question is also transcript: it belongs to the meeting.
-        finalSegments.append(TranscriptSegment(channel: "me", text: trimmed, isFinal: true))
+        finalSegments.append(TranscriptSegment(
+            channel: "me", text: trimmed, isFinal: true,
+            speakerLabel: mySpeakerFirstName.isEmpty ? nil : mySpeakerFirstName
+        ))
         runAction(nil, typedQuestion: trimmed)
     }
 

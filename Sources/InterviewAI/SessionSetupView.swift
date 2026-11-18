@@ -10,20 +10,24 @@ import InterviewAIKit
 /// all-day birthdays included, and the summary believed the name.
 /// Now the user confirms what the call is, or says it is not an
 /// appointment at all, picks the mode and the language, sets audio
-/// saving for this session, and can leave one line of context that
-/// the answers, the suggestions, and the notes all work from.
+/// saving for this session, says who the call is with (that name
+/// labels the other side's transcript lines, live), and can leave
+/// one line of context that the answers, the suggestions, and the
+/// notes all work from.
 struct SessionSetupView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
 
     @AppStorage("speech.locale") private var speechLocale = "en-US"
     @AppStorage("answers.language") private var answerLanguage = ""
+    @AppStorage("speaker.myName") private var myName = ""
 
     @State private var matchedEvent: UpcomingEvent?
     @State private var useEvent = false
     @State private var modeID = ""
     @State private var selectedLocale = ""
     @State private var contextText = ""
+    @State private var talkingWith = ""
     @State private var saveAudio = false
     @State private var loaded = false
 
@@ -100,6 +104,30 @@ struct SessionSetupView: View {
                 }
             }
 
+            VStack(alignment: .leading, spacing: Space.xs) {
+                rowCard {
+                    TextField("Who are you talking with?", text: $talkingWith)
+                        .textFieldStyle(.plain)
+                        .font(.callout)
+                }
+                if useEvent, let event = matchedEvent {
+                    let names = SpeakerNames.candidates(attendees: event.attendees, organizer: event.organizer, myName: myName)
+                    if names.count > 1 {
+                        HStack(spacing: Space.xs) {
+                            ForEach(names.prefix(4), id: \.self) { name in
+                                Button(name) { talkingWith = name }
+                                    .buttonStyle(ChipButtonStyle(selected: talkingWith == name))
+                            }
+                        }
+                        .padding(.horizontal, Space.xs)
+                    }
+                }
+                Text("The transcript shows this name for the other side's lines. Leave it empty when you do not know, or when several people will speak.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, Space.xs)
+            }
+
             rowCard {
                 TextField("What is this about? A name, a topic, a goal", text: $contextText)
                     .textFieldStyle(.plain)
@@ -126,7 +154,8 @@ struct SessionSetupView: View {
                     model.session.startPlanned(
                         event: useEvent ? matchedEvent : nil,
                         context: contextText,
-                        saveAudio: saveAudio
+                        saveAudio: saveAudio,
+                        talkingWith: talkingWith
                     )
                 }
                 .buttonStyle(InkButtonStyle())
@@ -148,6 +177,10 @@ struct SessionSetupView: View {
             modeID = model.activeModeID
             selectedLocale = OnboardingLanguage.matching(locale: speechLocale)?.locale ?? "en-US"
             saveAudio = UserDefaults.standard.bool(forKey: "sessionAudio.enabled")
+            if let event = matchedEvent,
+               let single = SpeakerNames.singleOther(attendees: event.attendees, organizer: event.organizer, myName: myName) {
+                talkingWith = single
+            }
         }
     }
 

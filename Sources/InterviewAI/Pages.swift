@@ -14,6 +14,11 @@ struct LivePage: View {
     @State private var upcomingEvents: [UpcomingEvent] = []
     @State private var calendarState = CalendarService.authorizationText()
     @AppStorage("sessionAudio.enabled") private var saveSessionAudio = false
+    @AppStorage("live.answerLayout") private var answerLayoutRaw = AnswerLayout.balanced.rawValue
+
+    /// How the page splits between transcript and answer, from the
+    /// menu in the Answer header: Balanced, Answer Focus, Full Width.
+    private var layout: AnswerLayout { AnswerLayout(rawValue: answerLayoutRaw) ?? .balanced }
 
     var body: some View {
         let session = model.session
@@ -88,8 +93,10 @@ struct LivePage: View {
                     SessionSetupView()
                 }
 
-            HSplitView {
-                VStack(alignment: .leading, spacing: Space.sm) {
+            GeometryReader { geo in
+                HStack(spacing: 0) {
+                    if layout.showsTranscript {
+                    VStack(alignment: .leading, spacing: Space.sm) {
                     HStack(spacing: Space.sm) {
                         Text("Transcript")
                             .font(.headline)
@@ -113,11 +120,13 @@ struct LivePage: View {
                         .help("Export the transcript as a markdown file")
                     }
                     OverlayTranscriptList()
-                }
-                .padding(Space.md)
-                .panelSurface()
-                .padding(Space.sm)
-                .frame(minWidth: 280)
+                    }
+                    .padding(Space.md)
+                    .panelSurface()
+                    .padding(Space.sm)
+                    .frame(width: max(240, geo.size.width * layout.transcriptFraction))
+                    Divider()
+                    }
 
                 VStack(alignment: .leading, spacing: Space.sm) {
                     VStack(alignment: .leading, spacing: Space.sm) {
@@ -141,6 +150,25 @@ struct LivePage: View {
                                     ProgressView()
                                         .controlSize(.small)
                                 }
+                                Spacer()
+                                Menu {
+                                    ForEach(AnswerLayout.allCases, id: \.rawValue) { option in
+                                        Button {
+                                            answerLayoutRaw = option.rawValue
+                                        } label: {
+                                            if option == layout {
+                                                Label(option.label, systemImage: "checkmark")
+                                            } else {
+                                                Text(option.label)
+                                            }
+                                        }
+                                    }
+                                } label: {
+                                    Image(systemName: "rectangle.split.2x1")
+                                }
+                                .menuStyle(.borderlessButton)
+                                .menuIndicator(.hidden)
+                                .help("Answer layout: Balanced, Answer Focus, or Full Width")
                             }
                             if let error = session.answerError {
                                 Text(error)
@@ -179,7 +207,8 @@ struct LivePage: View {
                     }
                 }
                 .padding(Space.sm)
-                .frame(minWidth: 280)
+                .frame(maxWidth: .infinity)
+                }
             }
         }
         .navigationTitle("Live")
@@ -320,7 +349,8 @@ struct TranscriptRow: View {
             Text(segment.speakerName)
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(segment.channel == "me" ? Palette.accentText : .secondary)
-                .frame(width: 64, alignment: .leading)
+                .lineLimit(1)
+                .frame(width: 104, alignment: .leading)
             VStack(alignment: .leading, spacing: 2) {
                 Text(segment.displayText)
                     .font(font)
@@ -579,6 +609,8 @@ struct MeetingsPage: View {
     @State private var search = ""
     @State private var tab = "Transcript"
     @State private var showEventPicker = false
+    @State private var showSpeakerNames = false
+    @State private var showImport = false
     @AppStorage("reading.transcriptFontSize") private var transcriptFontSize = 14.0
 
     /// List rows are narrow: a composed title ("General · Nov 4, 2026
@@ -624,6 +656,17 @@ struct MeetingsPage: View {
                 }
             }
             .navigationSplitViewColumnWidth(min: 220, ideal: 280)
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Button("Import", systemImage: "square.and.arrow.down") {
+                        showImport = true
+                    }
+                    .help("Import a transcript, an audio or video file, or a video link as a meeting")
+                }
+            }
+            .sheet(isPresented: $showImport) {
+                ImportMeetingSheet()
+            }
             .searchable(text: $search, prompt: "Search meetings")
             .overlay {
                 if visible.isEmpty {
@@ -707,6 +750,10 @@ struct MeetingsPage: View {
                         Button(meeting.eventID.isEmpty ? "Link to Calendar Event…" : "Change Calendar Event…") {
                             showEventPicker = true
                         }
+                        Button("Name Speakers…") {
+                            showSpeakerNames = true
+                        }
+                        .disabled(meeting.segments.isEmpty)
                     }
                 }
                 .sheet(isPresented: $showEventPicker) {
@@ -714,6 +761,9 @@ struct MeetingsPage: View {
                         model.setCalendarEvent(event, for: meeting)
                         showEventPicker = false
                     }
+                }
+                .sheet(isPresented: $showSpeakerNames) {
+                    SpeakerNamesSheet(meeting: meeting)
                 }
                 if !meeting.audioFileName.isEmpty, SessionAudioStore.exists(fileName: meeting.audioFileName) {
                     MeetingAudioPlayer(url: SessionAudioStore.url(fileName: meeting.audioFileName))
@@ -765,6 +815,95 @@ struct MeetingsPage: View {
         } else {
             ContentUnavailableView("No Meeting Selected", systemImage: "sidebar.right")
         }
+    }
+}
+
+/// Rename the speakers of a saved meeting. The transcript shows
+/// labels ("Them", "Speaker 1", or a name); this sheet rewrites one
+/// label into a real name across every line at once, so the meeting
+/// view, the export, and anything generated from the transcript all
+/// follow. The invited people are offered as one-tap picks.
+struct SpeakerNamesSheet: View {
+    let meeting: Meeting
+    @Environment(\.dismiss) private var dismiss
+    @State private var names: [String: String] = [:]
+
+    private var speakers: [String] {
+        SpeakerNames.distinctNames(segments: meeting.segments)
+    }
+
+    private var invited: [String] {
+        meeting.attendees.isEmpty ? [] : meeting.attendees.components(separatedBy: ", ")
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Space.lg) {
+            Text("Name the Speakers")
+                .font(.title3.weight(.semibold))
+            Text("These are the names the transcript shows now. Change one and every line from that speaker follows, in this view, in the export, and in the text the summary is written from. Only name someone you know was speaking.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: Space.md) {
+                ForEach(speakers, id: \.self) { speaker in
+                    HStack(spacing: Space.sm) {
+                        Text(speaker)
+                            .font(.callout.weight(.medium))
+                            .lineLimit(1)
+                            .frame(width: 112, alignment: .leading)
+                        TextField(speaker, text: binding(for: speaker))
+                            .textFieldStyle(.roundedBorder)
+                        if !invited.isEmpty {
+                            Menu {
+                                ForEach(invited, id: \.self) { person in
+                                    Button(person) { names[speaker] = person }
+                                }
+                            } label: {
+                                Image(systemName: "person.crop.rectangle")
+                            }
+                            .menuStyle(.borderlessButton)
+                            .menuIndicator(.hidden)
+                            .help("Pick from the invited people")
+                        }
+                    }
+                }
+            }
+            HStack(spacing: Space.sm) {
+                Button("Cancel") { dismiss() }
+                    .buttonStyle(QuietButtonStyle())
+                    .keyboardShortcut(.cancelAction)
+                Spacer()
+                Button("Save Names") {
+                    var mapping: [String: String] = [:]
+                    for speaker in speakers {
+                        let typed = (names[speaker] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                        if !typed.isEmpty, typed != speaker { mapping[speaker] = typed }
+                    }
+                    if !mapping.isEmpty {
+                        let updated = SpeakerNames.applying(segments: meeting.segments, mapping: mapping)
+                        meeting.transcriptJSON = TranscriptSegment.encode(updated)
+                        try? meeting.modelContext?.save()
+                    }
+                    dismiss()
+                }
+                .buttonStyle(InkButtonStyle())
+                .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(Space.xl)
+        .frame(width: 480)
+        .background(Surface.canvas)
+        .onAppear {
+            for speaker in speakers where names[speaker] == nil {
+                names[speaker] = speaker
+            }
+        }
+    }
+
+    private func binding(for speaker: String) -> Binding<String> {
+        Binding(
+            get: { names[speaker] ?? speaker },
+            set: { names[speaker] = $0 }
+        )
     }
 }
 

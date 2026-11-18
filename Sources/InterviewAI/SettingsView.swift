@@ -107,9 +107,14 @@ struct GeneralSettings: View {
     @State private var storedAudioSize = SessionAudioStore.formattedTotal()
     @AppStorage("suggestions.frequency") private var suggestionFrequency = "balanced"
     @AppStorage("suggestions.overlayCard") private var suggestionOverlayCard = true
+    @AppStorage("speaker.myName") private var myName = ""
 
     var body: some View {
         Section("Live Session") {
+            TextField("Your Name", text: $myName)
+            Text("Your lines in the transcript carry this name. It also keeps your name off the other side's speakers when a calendar invite is matched to voices after a call.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
             Toggle("Auto Answer", isOn: $autoAnswer)
             Text("When the other side finishes a question, an answer starts on its own. Off means answers wait for ⌘1 to ⌘7 or the ask box.")
                 .font(.caption)
