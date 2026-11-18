@@ -449,9 +449,13 @@ final class LiveSession {
     private func diarize(meeting: Meeting) {
         let segments = meeting.segments
         let attendeeNames = meeting.attendees.isEmpty ? [] : meeting.attendees.components(separatedBy: ", ")
-        let candidates = SpeakerNames.candidates(attendees: attendeeNames, myName: Self.myNameSetting)
+        // The invitation's text counts too: real attendee lists are
+        // often empty while the title and details name the people.
+        let candidates = SpeakerNames.invitationCandidates(
+            attendees: attendeeNames, title: meeting.title, details: meeting.eventDetails,
+            myName: Self.myNameSetting)
         let knownSingle = otherSpeakerName.isEmpty
-            ? SpeakerNames.singleOther(attendees: attendeeNames, myName: Self.myNameSetting)
+            ? (candidates.count == 1 ? candidates[0] : nil)
             : otherSpeakerName
         var passCandidates = candidates
         if let knownSingle, !passCandidates.contains(knownSingle) { passCandidates.append(knownSingle) }

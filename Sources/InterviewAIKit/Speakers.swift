@@ -84,6 +84,135 @@ public enum SpeakerNames {
         return list.count == 1 ? list[0] : nil
     }
 
+    /// Everyone the invitation points at: the attendee list, the
+    /// organizer, and the names mined from the invitation's own
+    /// title and details, cleaned the same way as `candidates`
+    /// (no addresses, never the user, no duplicates). Real
+    /// invitations often carry an empty attendee list and put the
+    /// people in the text instead: "Interview with Sharin Sörgel",
+    /// "ML6 interview — Jan Sawallisch, …". A lone first name that
+    /// a full name in the list already covers is dropped.
+    public static func invitationCandidates(attendees: [String], organizer: String = "",
+                                            title: String = "", details: String = "",
+                                            myName: String = "") -> [String] {
+        let pool = candidates(attendees: attendees + minedNames(title: title, details: details),
+                              organizer: organizer, myName: myName)
+        return pool.filter { name in
+            name.contains(" ")
+                || !pool.contains(where: { $0 != name && firstName(of: $0).lowercased() == name.lowercased() })
+        }
+    }
+
+    /// Names written into an invitation's title and details, in the
+    /// order found. Deterministic patterns only, no model: a name
+    /// after "with" or "mit" (a list joined by +, & or "and" gives
+    /// every name), a name after "arranged / organised / booked
+    /// by", and the title pattern "— Name,". A mined name is only
+    /// ever a candidate: the evidence pass and the user still
+    /// decide who actually spoke.
+    public static func minedNames(title: String, details: String) -> [String] {
+        var found: [String] = []
+        func add(_ name: String) {
+            if !found.contains(where: { $0.lowercased() == name.lowercased() }) { found.append(name) }
+        }
+        for name in withPhrases(in: title) { add(name) }
+        for name in dashNames(in: title) { add(name) }
+        for name in withPhrases(in: details) { add(name) }
+        return found
+    }
+
+    private static let nameParticles: Set<String> = ["von", "van", "de", "der", "den", "ten", "zu"]
+    private static let nameStoplist: Set<String> = [
+        "google", "zoom", "microsoft", "teams", "skype", "webex",
+        "interview", "call", "meeting", "team", "group", "everyone",
+        "birthday", "holiday", "senior", "junior", "product", "manager",
+        "director", "head", "chief", "lead", "staff", "principal",
+        "talent", "acquisition", "partner", "specialist", "founder",
+        "operations", "engineering", "design", "marketing",
+    ]
+
+    /// Words of a text with sentence punctuation trimmed off the
+    /// edges, so "(call" and "Mandry," read as plain words.
+    private static func words(of text: String) -> [String] {
+        text.split(whereSeparator: { $0.isWhitespace })
+            .map { $0.trimmingCharacters(in: CharacterSet(charactersIn: "(),.;:!?\"'„“”«»")) }
+            .filter { !$0.isEmpty }
+    }
+
+    /// A word that can be part of a person's name: starts with an
+    /// uppercase letter, is letters, hyphens and apostrophes only,
+    /// is not an all-caps shout, and is not a platform, calendar or
+    /// role word.
+    private static func isNameWord(_ word: String) -> Bool {
+        guard let first = word.first, first.isUppercase else { return false }
+        guard word.allSatisfy({ $0.isLetter || $0 == "-" || $0 == "'" }) else { return false }
+        if word.count > 1, word.allSatisfy({ !$0.isLetter || $0.isUppercase }) { return false }
+        return !nameStoplist.contains(word.lowercased())
+    }
+
+    /// One name starting at `index`: a name word plus one more, or
+    /// a name word, a lowercase particle (von, van, de) and a name
+    /// word. Never more: a third plain word after two is where role
+    /// words begin ("Sharin Sörgel, Senior Talent …"), and stopping
+    /// there keeps them out.
+    private static func parseName(in words: [String], at index: Int) -> (name: String, next: Int)? {
+        guard index < words.count, isNameWord(words[index]) else { return nil }
+        var parts = [words[index]]
+        var cursor = index + 1
+        if cursor < words.count {
+            if nameParticles.contains(words[cursor].lowercased()),
+               cursor + 1 < words.count, isNameWord(words[cursor + 1]) {
+                parts.append(words[cursor])
+                parts.append(words[cursor + 1])
+                cursor += 2
+            } else if isNameWord(words[cursor]) {
+                parts.append(words[cursor])
+                cursor += 1
+            }
+        }
+        return (parts.joined(separator: " "), cursor)
+    }
+
+    /// Names that follow "with" / "mit", or "by" right after
+    /// arranged / organised / organized / booked.
+    private static func withPhrases(in text: String) -> [String] {
+        let words = words(of: text)
+        var names: [String] = []
+        var index = 0
+        while index < words.count {
+            let word = words[index].lowercased()
+            let triggered = word == "with" || word == "mit"
+                || (word == "by" && index > 0
+                    && ["arranged", "organised", "organized", "booked"].contains(words[index - 1].lowercased()))
+            guard triggered else { index += 1; continue }
+            var cursor = index + 1
+            while let parsed = parseName(in: words, at: cursor) {
+                names.append(parsed.name)
+                cursor = parsed.next
+                if cursor < words.count, ["+", "&", "and", "und"].contains(words[cursor].lowercased()) {
+                    cursor += 1
+                } else { break }
+            }
+            index = max(cursor, index + 1)
+        }
+        return names
+    }
+
+    /// The title pattern "— Name,": "ML6 interview — Jan
+    /// Sawallisch, Senior Product Manager". The name must be
+    /// followed by a comma or the end of the segment.
+    private static func dashNames(in title: String) -> [String] {
+        var names: [String] = []
+        for segment in title.components(separatedBy: "—").dropFirst() {
+            let trimmed = segment.trimmingCharacters(in: .whitespaces)
+            guard let parsed = parseName(in: words(of: trimmed), at: 0),
+                  trimmed.hasPrefix(parsed.name) else { continue }
+            let rest = trimmed.dropFirst(parsed.name.count)
+            if rest.isEmpty || rest.hasPrefix(",") { names.append(parsed.name) }
+        }
+        return names
+    }
+
     /// "Jan Sawallisch" becomes "Jan". Used where a full name would
     /// crowd a transcript label, and for the user's own lines.
     public static func firstName(of fullName: String) -> String {

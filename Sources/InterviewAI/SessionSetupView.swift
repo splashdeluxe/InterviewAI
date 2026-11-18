@@ -111,7 +111,7 @@ struct SessionSetupView: View {
                         .font(.callout)
                 }
                 if useEvent, let event = matchedEvent {
-                    let names = SpeakerNames.candidates(attendees: event.attendees, organizer: event.organizer, myName: myName)
+                    let names = SpeakerNames.invitationCandidates(attendees: event.attendees, organizer: event.organizer, title: event.title, details: event.details, myName: myName)
                     if names.count > 1 {
                         HStack(spacing: Space.xs) {
                             ForEach(names.prefix(4), id: \.self) { name in
@@ -177,9 +177,9 @@ struct SessionSetupView: View {
             modeID = model.activeModeID
             selectedLocale = OnboardingLanguage.matching(locale: speechLocale)?.locale ?? "en-US"
             saveAudio = UserDefaults.standard.bool(forKey: "sessionAudio.enabled")
-            if let event = matchedEvent,
-               let single = SpeakerNames.singleOther(attendees: event.attendees, organizer: event.organizer, myName: myName) {
-                talkingWith = single
+            if let event = matchedEvent {
+                let pool = SpeakerNames.invitationCandidates(attendees: event.attendees, organizer: event.organizer, title: event.title, details: event.details, myName: myName)
+                if pool.count == 1 { talkingWith = pool[0] }
             }
         }
     }

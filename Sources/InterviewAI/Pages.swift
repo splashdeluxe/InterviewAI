@@ -984,7 +984,10 @@ struct SpeakerNamesSheet: View {
     }
 
     private var invited: [String] {
-        meeting.attendees.isEmpty ? [] : meeting.attendees.components(separatedBy: ", ")
+        let attendeeList = meeting.attendees.isEmpty ? [] : meeting.attendees.components(separatedBy: ", ")
+        return SpeakerNames.invitationCandidates(
+            attendees: attendeeList, title: meeting.title, details: meeting.eventDetails,
+            myName: UserDefaults.standard.string(forKey: "speaker.myName") ?? "")
     }
 
     var body: some View {
@@ -1086,7 +1089,10 @@ struct ConfirmSpeakersSheet: View {
     }
 
     private var invited: [String] {
-        meeting.attendees.isEmpty ? [] : meeting.attendees.components(separatedBy: ", ")
+        let attendeeList = meeting.attendees.isEmpty ? [] : meeting.attendees.components(separatedBy: ", ")
+        return SpeakerNames.invitationCandidates(
+            attendees: attendeeList, title: meeting.title, details: meeting.eventDetails,
+            myName: UserDefaults.standard.string(forKey: "speaker.myName") ?? "")
     }
 
     var body: some View {
