@@ -174,20 +174,19 @@ struct ContentView: View {
         }
     }
 
-    /// The Settings button: a 32 pt soft circle with the gear in
-    /// ink, opening Settings on click. On hover the gear turns a
-    /// quarter turn on the rubber-band spring and pops to the
-    /// exaggeration scale, and the Settings tag slides out.
+    /// The Settings button: a 32 pt soft circle with the drawn
+    /// gear in ink, opening Settings on click. On hover the
+    /// gear turns continuously, one slow turn every nine
+    /// seconds, the button pops to the exaggeration scale,
+    /// and the Settings tag slides out.
     private var footSettingsButton: some View {
         let hovered = hoveredRailID == "settings"
         return Button {
             openSettings()
         } label: {
-            Image(systemName: "gearshape")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(Surface.ink)
-                .rotationEffect(.degrees(hovered && !reduceMotion ? 90 : 0))
+            GearGlyph(hovered: hovered, reduceMotion: reduceMotion, tint: Surface.ink)
                 .scaleEffect(hovered && !reduceMotion ? CGFloat(MotionSpec.exaggerationScale) : 1)
+                .frame(width: 20, height: 20)
                 .frame(width: 32, height: 32)
                 .background(Circle().fill(Surface.control))
                 .overlay(Circle().strokeBorder(Surface.controlBorder, lineWidth: 1))
@@ -287,19 +286,17 @@ private struct RailMove: Equatable {
 /// the glyph moves, the tag and the gear all glide on these.
 /// A keyframed move runs about a second and a half end to
 /// end; the glide carries the scale pop and the tag.
-private enum RailTiming {
+enum RailTiming {
     static let glide = Animation.spring(response: 0.45, dampingFraction: 0.8)
     static let phase = Animation.spring(response: 0.34, dampingFraction: 0.74)
 }
 
 /// One page button in the rail. It owns its hover-play trigger,
 /// so a glyph's move fires on hover-in only and never replays
-/// on the way out. The moves are the Flaticon idea in the app's
-/// own motion: the waveform's bars ripple for as long as the
-/// pointer stays, and every other glyph plays its keyframed
-/// move once, the clock's arrow sweeping, the person waving,
-/// the document hopping with a squash, the card tipping, the
-/// magnifier searching in a small loop.
+/// on the way out. The glyph is drawn, not a symbol font: the
+/// run 1 prototype ported natively in RailGlyphs. Most moves
+/// live inside the glyph; the card's tip and the magnifier's
+/// search move the whole glyph and are applied here.
 private struct RailPageButton: View {
     let page: SidebarItem
     let selected: Bool
@@ -330,18 +327,20 @@ private struct RailPageButton: View {
 
     @ViewBuilder
     private var glyph: some View {
-        let base = Image(systemName: page.symbol)
-            .font(.system(size: 16, weight: .semibold))
-            .foregroundStyle(selected || hovered ? Surface.ink : Color.secondary)
+        let tint = selected || hovered ? Surface.ink : Color.secondary
+        let core = RailGlyph(page: page, hovered: hovered, playCount: playCount,
+                             reduceMotion: reduceMotion, tint: tint)
+            .frame(width: 20, height: 20)
             .scaleEffect(hovered && !reduceMotion ? CGFloat(MotionSpec.exaggerationScale) : 1)
             .animation(RailTiming.glide, value: hovered)
-        if reduceMotion {
-            base
-        } else if page == .live {
-            base.symbolEffect(.variableColor.iterative, options: .repeating, isActive: hovered)
+        if reduceMotion || (page != .intelligence && page != .ask) {
+            // The other glyphs carry their moves inside
+            // themselves; only the card's tip and the
+            // magnifier's search move the whole glyph.
+            core
         } else {
             PhaseAnimator(RailMoves.moves(for: page), trigger: playCount) { phase in
-                base
+                core
                     .offset(x: phase.slide, y: phase.lift) // grid: ok the hover move is keyframed, not a layout nudge
                     .rotationEffect(.degrees(phase.tilt))
                     .scaleEffect(x: phase.squashX, y: phase.squashY)
@@ -352,32 +351,13 @@ private struct RailPageButton: View {
     }
 }
 
-/// The keyframed hover moves, one per page. Live is absent: its
-/// waveform ripples instead of hopping.
+/// The whole-glyph hover moves: only the profile card and
+/// the magnifier still move as a whole, tipping and
+/// searching as they did in the run 1 prototype. The other
+/// glyphs carry their moves inside themselves now.
 private enum RailMoves {
     static func moves(for page: SidebarItem) -> [RailMove] {
         switch page {
-        case .live:
-            return [.rest]
-        case .meetings:
-            // The arrow sweeps back, overshoots, and settles.
-            return [.rest,
-                    RailMove(tilt: -28),
-                    RailMove(tilt: 10),
-                    .rest]
-        case .modes:
-            // A wave: tip one way, the other, smaller, rest.
-            return [.rest,
-                    RailMove(tilt: -14),
-                    RailMove(tilt: 12),
-                    RailMove(tilt: -6),
-                    .rest]
-        case .context:
-            // A hop: stretch up, land with a squash, settle.
-            return [.rest,
-                    RailMove(lift: -6, squashX: 0.94, squashY: 1.06),
-                    RailMove(squashX: 1.08, squashY: 0.92),
-                    .rest]
         case .intelligence:
             // The card tips to one side, then the other.
             return [.rest,
@@ -391,6 +371,8 @@ private enum RailMoves {
                     RailMove(lift: 1, slide: -3),
                     RailMove(lift: 2, slide: 2),
                     .rest]
+        default:
+            return [.rest]
         }
     }
 }
