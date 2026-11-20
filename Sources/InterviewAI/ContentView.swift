@@ -77,11 +77,13 @@ struct ContentView: View {
     }
 
     /// The sidebar is an icon rail, rebuilt after the Muse rail
-    /// Nils recorded: quiet icons in a fixed 64 pt column, the
+    /// Nils recorded: quiet icons in a fixed 80 pt column, the
     /// current page filled, and on hover a name tag slides out of
     /// the rail's edge (see `railHoverLabel`). The tag is drawn by
     /// the root overlay, not by the rail itself, so it crosses the
-    /// split view's column edge without being clipped.
+    /// split view's column edge without being clipped. The rail
+    /// and its icons were sized up once, at Nils's word: the
+    /// first cut read too small.
     private var sidebar: some View {
         VStack(spacing: 0) {
             railHeader
@@ -89,7 +91,7 @@ struct ContentView: View {
             // first appearance, by index, instead of all in unison.
             // It is a first-appearance moment only; selecting a page
             // afterwards animates nothing here.
-            VStack(spacing: Space.xs) {
+            VStack(spacing: Space.sm) {
                 ForEach(Array(SidebarItem.allCases.enumerated()), id: \.element) { index, page in
                     railButton(page, index: index)
                 }
@@ -98,7 +100,7 @@ struct ContentView: View {
             Spacer(minLength: 0)
             railFoot
         }
-        .navigationSplitViewColumnWidth(min: 64, ideal: 64, max: 64)
+        .navigationSplitViewColumnWidth(min: 80, ideal: 80, max: 80)
         .background {
             GeometryReader { proxy in
                 Color.clear.preference(key: SidebarHeightKey.self, value: proxy.size.height)
@@ -111,10 +113,10 @@ struct ContentView: View {
     private var railHeader: some View {
         RoundedRectangle(cornerRadius: Radius.control, style: .continuous)
             .fill(Surface.ink)
-            .frame(width: 28, height: 28)
+            .frame(width: 36, height: 36)
             .overlay {
                 Image(systemName: "waveform")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(Surface.onInk)
             }
             .frame(maxWidth: .infinity)
@@ -124,7 +126,7 @@ struct ContentView: View {
             }
     }
 
-    /// One page in the rail: an icon in a 40 pt target, filled when
+    /// One page in the rail: an icon in a 52 pt target, filled when
     /// it is the current page, lit on hover. Selecting sets the
     /// same sidebar value the old list bound to, so page switching,
     /// the palette and the shortcuts all keep their one path.
@@ -157,7 +159,7 @@ struct ContentView: View {
         HStack(spacing: Space.sm) {
             footSettingsButton
             StatusDot(listening: model.session.isListening)
-                .frame(width: 16, height: 16)
+                .frame(width: 20, height: 20)
                 .onHover { inside in
                     if inside {
                         hoveredRailID = "status"
@@ -174,7 +176,7 @@ struct ContentView: View {
         }
     }
 
-    /// The Settings button: a 32 pt soft circle with the drawn
+    /// The Settings button: a 44 pt soft circle with the drawn
     /// gear in ink, opening Settings on click. On hover the
     /// gear turns continuously, one slow turn every nine
     /// seconds, the button pops to the exaggeration scale,
@@ -186,8 +188,8 @@ struct ContentView: View {
         } label: {
             GearGlyph(hovered: hovered, reduceMotion: reduceMotion, tint: Surface.ink)
                 .scaleEffect(hovered && !reduceMotion ? CGFloat(MotionSpec.exaggerationScale) : 1)
-                .frame(width: 20, height: 20)
-                .frame(width: 32, height: 32)
+                .frame(width: 28, height: 28)
+                .frame(width: 44, height: 44)
                 .background(Circle().fill(Surface.control))
                 .overlay(Circle().strokeBorder(Surface.controlBorder, lineWidth: 1))
         }
@@ -216,7 +218,7 @@ struct ContentView: View {
                     .padding(.horizontal, Space.sm)
                     .frame(height: 32)
                     .panelSurface(radius: Radius.control)
-                    .offset(x: 64 + Space.sm, y: midY - 16) // grid: ok the tag is placed from the rail's fixed layout, not nudged
+                    .offset(x: 80 + Space.sm, y: midY - 16) // grid: ok the tag is placed from the rail's fixed layout, not nudged
                     .transition(.opacity.combined(with: .offset(x: -8)).combined(with: .scale(scale: 0.92, anchor: .leading))) // grid: ok the tag springs out of the rail edge, growing from its left edge
             }
         }
@@ -243,17 +245,17 @@ struct ContentView: View {
     }
 
     /// Where the hover tag sits, from the rail's fixed layout: the
-    /// header block is 52 (tile 28, padding 12 above and below),
-    /// the icons start 8 lower, each is 40 tall with 4 between,
-    /// and the foot row's centre is 28 above the rail's foot
-    /// (padding 12 plus half the 32 pt settings button).
+    /// header block is 60 (tile 36, padding 12 above and below),
+    /// the icons start 8 lower, each is 52 tall with 8 between,
+    /// and the foot row's centre is 34 above the rail's foot
+    /// (padding 12 plus half the 44 pt settings button).
     private func railLabelMidY(for id: String) -> CGFloat? {
         if let page = SidebarItem(rawValue: id),
            let index = SidebarItem.allCases.firstIndex(of: page) {
-            return 52 + Space.sm + 20 + CGFloat(index) * 44
+            return 60 + Space.sm + 26 + CGFloat(index) * 60
         }
         guard id == "settings" || id == "status", sidebarHeight > 0 else { return nil }
-        return sidebarHeight - 28 // grid: ok 12 padding plus half the 32 pt settings button
+        return sidebarHeight - 34 // grid: ok 12 padding plus half the 44 pt settings button
     }
 
     @ViewBuilder
@@ -310,7 +312,7 @@ private struct RailPageButton: View {
     var body: some View {
         Button(action: onSelect) {
             glyph
-                .frame(width: 40, height: 40)
+                .frame(width: 52, height: 52)
                 .background {
                     RoundedRectangle(cornerRadius: Radius.card, style: .continuous)
                         .fill(selected ? Surface.inset : hovered ? Surface.control : Color.clear)
@@ -330,7 +332,7 @@ private struct RailPageButton: View {
         let tint = selected || hovered ? Surface.ink : Color.secondary
         let core = RailGlyph(page: page, hovered: hovered, playCount: playCount,
                              reduceMotion: reduceMotion, tint: tint)
-            .frame(width: 20, height: 20)
+            .frame(width: 28, height: 28)
             .scaleEffect(hovered && !reduceMotion ? CGFloat(MotionSpec.exaggerationScale) : 1)
             .animation(RailTiming.glide, value: hovered)
         if reduceMotion || (page != .intelligence && page != .ask) {
