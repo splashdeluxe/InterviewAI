@@ -68,7 +68,7 @@ enum ScorecardWriter {
                 if Task.isCancelled { return }
                 await MainActor.run { onProgress(index, totalSteps) }
                 let outcome = try? await DeepWork.complete(
-                    system: ScorecardPrompts.system,
+                    system: ScorecardPrompts.system + WritingInstructions.promptSuffix,
                     user: ScorecardPrompts.user(transcript: chunk),
                     maxTokens: 1600
                 )
@@ -88,7 +88,7 @@ enum ScorecardWriter {
             }
             if Task.isCancelled { return }
             let mergeOutcome = try? await DeepWork.complete(
-                system: ScorecardMergePrompts.system,
+                system: ScorecardMergePrompts.system + WritingInstructions.promptSuffix,
                 user: ScorecardMergePrompts.user(
                     title: title,
                     modeName: modeName,

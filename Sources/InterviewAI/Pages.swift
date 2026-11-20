@@ -651,6 +651,10 @@ struct MeetingsPage: View {
     @State private var scorecardFailed = false
     @State private var scorecardTask: Task<Void, Never>? = nil
     @State private var scorecardProgress: (done: Int, total: Int)? = nil
+    @State private var findingThemes = false
+    @State private var themesFailed = false
+    @State private var themeTask: Task<Void, Never>? = nil
+    @State private var themeProgress: (done: Int, total: Int)? = nil
     @State private var runningTransform = false
     @State private var transformFailed = false
     @State private var transformTask: Task<Void, Never>? = nil
@@ -934,6 +938,7 @@ struct MeetingsPage: View {
                                 Text("Follow-Up Draft").font(.headline)
                                 DocTextView(text: meeting.followUp)
                             }
+                            themesSection(meeting: meeting, hasAudio: hasAudio)
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
@@ -1244,6 +1249,88 @@ struct MeetingsPage: View {
                         }
                         Text(point.text)
                             .textSelection(.enabled)
+                    }
+                }
+            }
+        }
+    }
+
+    /// The call's themes, shown under the summary: the topics the
+    /// call worked on, each with one line on what was said and the
+    /// moments it came up, tappable to the audio when the meeting
+    /// has any. Found on demand by Find Themes, the same Deep
+    /// pattern as Questions and the scorecard; the summary itself
+    /// is never touched.
+    @ViewBuilder
+    private func themesSection(meeting: Meeting, hasAudio: Bool) -> some View {
+        VStack(alignment: .leading, spacing: Space.sm) {
+            HStack(spacing: Space.sm) {
+                Text("Themes").font(.headline)
+                Spacer()
+                Button {
+                    findingThemes = true
+                    themesFailed = false
+                    themeProgress = nil
+                    themeTask = ThemeFinder.find(meeting: meeting, onProgress: { done, total in
+                        themeProgress = (done, total)
+                    }) { success in
+                        findingThemes = false
+                        themeProgress = nil
+                        themeTask = nil
+                        themesFailed = !success
+                    }
+                } label: {
+                    Label(findingThemes ? (themeProgress.map { "Finding… \($0.done) of \($0.total)" } ?? "Finding…") : (meeting.themesExtracted ? "Find Themes Again" : "Find Themes"), systemImage: "tag")
+                }
+                .buttonStyle(QuietButtonStyle())
+                .disabled(findingThemes || meeting.segments.isEmpty)
+                if findingThemes {
+                    ProgressView().controlSize(.small)
+                    Button("Cancel") {
+                        themeTask?.cancel()
+                        themeTask = nil
+                        findingThemes = false
+                        themeProgress = nil
+                    }
+                    .buttonStyle(QuietButtonStyle())
+                }
+            }
+            if themesFailed {
+                Text("Finding the themes did not finish. The transcript is unchanged.")
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
+            if meeting.themes.isEmpty {
+                Text(meeting.themesExtracted
+                     ? "No themes stood out in this transcript."
+                     : "The topics this call worked on, each pinned to the moments it came up, so you can jump from a topic to the moment instead of scanning the notes. Finding them runs on this Mac and can take a few minutes on a long call.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(Array(meeting.themes.enumerated()), id: \.offset) { _, theme in
+                    VStack(alignment: .leading, spacing: Space.xs) {
+                        Text(theme.title).font(.callout.weight(.semibold))
+                        Text(theme.detail)
+                            .textSelection(.enabled)
+                        HStack(spacing: Space.sm) {
+                            ForEach(theme.atSeconds, id: \.self) { moment in
+                                if hasAudio {
+                                    Button {
+                                        seekRequest = max(0, moment - 2)
+                                    } label: {
+                                        Text(TranscriptTime.label(seconds: moment))
+                                            .font(.caption.monospacedDigit())
+                                    }
+                                    .buttonStyle(.plain)
+                                    .foregroundStyle(.secondary)
+                                    .help("Play from just before this moment")
+                                } else {
+                                    Text(TranscriptTime.label(seconds: moment))
+                                        .font(.caption.monospacedDigit())
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                        }
                     }
                 }
             }

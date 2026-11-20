@@ -734,7 +734,7 @@ final class LiveSession {
             // It is also Deep work: the big model writes it when
             // Dual-Brain is on, the live model when it is not.
             let outcome = try? await DeepWork.complete(
-                system: "You write meeting notes from a transcript: clear, complete, factual. Use only the transcript. No invented names, numbers, decisions, or roles.",
+                system: "You write meeting notes from a transcript: clear, complete, factual. Use only the transcript. No invented names, numbers, decisions, or roles." + WritingInstructions.promptSuffix,
                 user: PromptBuilder.summaryMessage(transcript: segments, notes: notes, title: title, attendees: attendees, singleChannel: singleChannel),
                 maxTokens: 1200
             )

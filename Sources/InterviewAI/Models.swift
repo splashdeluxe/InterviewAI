@@ -53,6 +53,14 @@ final class Meeting {
     /// missing card means "looked, nothing to file", not "never
     /// looked".
     var scorecardWritten: Bool = false
+    /// The call's themes with their moments, JSON-encoded
+    /// [MeetingTheme], pulled out of the transcript by Find Themes
+    /// and shown under the summary on the Summary tab. Empty until
+    /// a run finds any.
+    var themesJSON: String = ""
+    /// Find Themes has completed a run on this meeting, so an
+    /// empty list means "looked, none found", not "never looked".
+    var themesExtracted: Bool = false
     /// What the Create tab made from this meeting, JSON-encoded
     /// [TransformResult]: a brief summary, a thank-you email, study
     /// questions, a translation, and the rest. Running a transform
@@ -82,6 +90,7 @@ final class Meeting {
     var hasCleanedTranscript: Bool { !cleanedSegments.isEmpty }
     var questionPairs: [QuestionPair] { QuestionPair.decode(questionsJSON) }
     var scorecard: InterviewScorecard? { InterviewScorecard.decode(scorecardJSON) }
+    var themes: [MeetingTheme] { MeetingTheme.decode(themesJSON) }
     var transformResults: [TransformResult] { TransformResult.decode(transformsJSON) }
 }
 

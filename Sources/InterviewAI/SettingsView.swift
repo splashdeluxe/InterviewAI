@@ -104,6 +104,8 @@ struct GeneralSettings: View {
     @AppStorage("reading.transcriptFontSize") private var transcriptFontSize = 14.0
     @AppStorage("general.showInDock") private var showInDock = true
     @AppStorage("sessionAudio.enabled") private var saveSessionAudio = false
+    @AppStorage("sessionAudio.retentionDays") private var audioRetentionDays = 0
+    @AppStorage("generation.instructions") private var writingInstructions = ""
     @State private var storedAudioSize = SessionAudioStore.formattedTotal()
     @AppStorage("suggestions.frequency") private var suggestionFrequency = "balanced"
     @AppStorage("suggestions.overlayCard") private var suggestionOverlayCard = true
@@ -144,8 +146,28 @@ struct GeneralSettings: View {
             Text("Audio stays on this Mac. Deleting a meeting deletes its audio.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            Picker("Keep Session Audio For", selection: $audioRetentionDays) {
+                Text("Forever").tag(0)
+                Text("7 days").tag(7)
+                Text("30 days").tag(30)
+                Text("90 days").tag(90)
+            }
+            .onChange(of: audioRetentionDays) { _, _ in
+                AudioRetention.sweep()
+                storedAudioSize = SessionAudioStore.formattedTotal()
+            }
+            Text("With a window set, the audio of meetings older than it is deleted when the app opens and when this changes. Transcripts, summaries, and everything written from them stay; only the recording goes.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
         .onAppear { storedAudioSize = SessionAudioStore.formattedTotal() }
+        Section("Writing Instructions") {
+            TextEditor(text: $writingInstructions)
+                .frame(height: 72)
+            Text("Your standing instructions for the drafts written after a call: the meeting summary and follow-up, and the interviewer scorecard. Ask for a tone, a length, or a format, like “Keep summaries short, plain words, decisions first.” They steer how a draft reads, never what it says happened, and they never touch the transcript or the found questions, which are quotes.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
         Section("Automatic Suggestions") {
             Picker("Frequency", selection: $suggestionFrequency) {
                 ForEach(SuggestionFrequency.allCases, id: \.rawValue) { frequency in

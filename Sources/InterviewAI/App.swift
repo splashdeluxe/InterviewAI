@@ -106,6 +106,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate()
         Task { @MainActor in
             WhatsNewLaunch.run()
+            AudioRetention.sweep()
             UpdateChecker.shared.checkIfStale()
             // Nils's call (2026-11-12): the Support sheet stays live but
             // rare, not on every open. It shows at most once every 14

@@ -61,7 +61,7 @@ enum MeetingImporter {
         let attendeeList = meeting.attendees.isEmpty ? [] : meeting.attendees.components(separatedBy: ", ")
         Task {
             let outcome = try? await DeepWork.complete(
-                system: "You write meeting notes from a transcript: clear, complete, factual. Use only the transcript. No invented names, numbers, decisions, or roles.",
+                system: "You write meeting notes from a transcript: clear, complete, factual. Use only the transcript. No invented names, numbers, decisions, or roles." + WritingInstructions.promptSuffix,
                 user: PromptBuilder.summaryMessage(
                     transcript: segments, notes: meeting.notes, title: meeting.title,
                     attendees: attendeeList, singleChannel: singleChannel
