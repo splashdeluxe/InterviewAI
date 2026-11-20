@@ -638,6 +638,7 @@ struct MeetingsPage: View {
     @State private var showSpeakerNames = false
     @State private var showConfirmSpeakers = false
     @State private var showImport = false
+    @State private var droppedFiles: [URL] = []
     @State private var showCleaned = false
     @State private var cleaning = false
     @State private var cleanFailed = false
@@ -733,8 +734,8 @@ struct MeetingsPage: View {
                     .help("Import a transcript, an audio or video file, or a video link as a meeting")
                 }
             }
-            .sheet(isPresented: $showImport) {
-                ImportMeetingSheet()
+            .sheet(isPresented: $showImport, onDismiss: { droppedFiles = [] }) {
+                ImportMeetingSheet(initialFiles: droppedFiles)
             }
             .searchable(text: $search, prompt: "Search meetings")
             .overlay {
@@ -747,6 +748,13 @@ struct MeetingsPage: View {
             detail
         }
         .navigationTitle("Meetings")
+        .dropDestination(for: URL.self) { urls, _ in
+            let files = urls.filter { $0.isFileURL }
+            guard !files.isEmpty else { return false }
+            droppedFiles = files
+            showImport = true
+            return true
+        }
     }
 
     @ViewBuilder
