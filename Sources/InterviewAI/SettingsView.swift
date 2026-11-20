@@ -104,6 +104,7 @@ struct GeneralSettings: View {
     @AppStorage("reading.transcriptFontSize") private var transcriptFontSize = 14.0
     @AppStorage("general.showInDock") private var showInDock = true
     @AppStorage("sessionAudio.enabled") private var saveSessionAudio = false
+    @AppStorage("session.autoStart") private var autoStart = false
     @AppStorage("sessionAudio.retentionDays") private var audioRetentionDays = 0
     @AppStorage("generation.instructions") private var writingInstructions = ""
     @State private var storedAudioSize = SessionAudioStore.formattedTotal()
@@ -133,6 +134,12 @@ struct GeneralSettings: View {
             Slider(value: $overlayOpacity, in: 0.5...1.0) {
                 Text("Overlay opacity")
             }
+        }
+        Section("Meeting Detection") {
+            Toggle("Start Automatically When a Meeting Begins", isOn: $autoStart)
+            Text("When a calendar event with a video call link begins, a countdown appears on screen, and listening starts on its own when the countdown runs out. The meeting takes the event's title, and the people on the invite are filled in. Only events with a Zoom, Meet, Teams, or similar call link count, so a birthday or a padel match never starts a recording. It works only while InterviewAI is running, and the countdown can always be stopped.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
         Section("Session Audio") {
             Toggle("Save Session Audio", isOn: $saveSessionAudio)

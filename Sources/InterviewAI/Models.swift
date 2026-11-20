@@ -252,6 +252,7 @@ final class AppModel {
     let session = LiveSession()
     let overlay = OverlayController()
     let phoneDisplay = PhoneDisplay()
+    let autoStart = AutoStartController()
 
     /// Whether the menu bar icon is inserted. Held on the model, NOT in
     /// an @AppStorage in the App struct: the MenuBarExtra isInserted
@@ -293,6 +294,8 @@ final class AppModel {
         AppModel.current = self
         session.model = self
         overlay.model = self
+        autoStart.model = self
+        autoStart.start()
         phoneDisplay.bind(session: session)
         if phoneDisplayEnabled { phoneDisplay.apply(enabled: true) }
         HotkeyCenter.shared.model = self
