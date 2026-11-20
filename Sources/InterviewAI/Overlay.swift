@@ -182,7 +182,15 @@ final class OverlayController {
             panel.setFrame(frame, display: true)
         } else {
             NSAnimationContext.runAnimationGroup { context in
-                context.duration = 0.25
+                // Rubber banding, in AppKit terms: the panel's
+                // height stretches to its new size and springs
+                // back into place. AppKit frame animation has no
+                // spring to hand it, so the spring-back is framed
+                // by the Kit's sheet duration (the SwiftUI surfaces
+                // get the literal spring, Motion.rubberBand) and
+                // the strong ease-in-out curve below, which settles
+                // at both ends instead of snapping.
+                context.duration = MotionSpec.sheetDuration
                 // Strong ease-in-out (Emil Kowalski's curve), not
                 // the built-in: the stock curve is too weak at the
                 // start, which is the moment the eye is watching.
@@ -318,9 +326,19 @@ struct OverlayView: View {
                 }
                 .frame(maxHeight: .infinity)
 
-                if let tip = session.currentSuggestion {
-                    suggestionCard(tip)
+                // Arcs: a new suggestion does not slide in
+                // straight. It arrives along the arc transition —
+                // in lifted from one side, out dropped the other —
+                // timed by the sheet animation on the tip's value,
+                // so a tip replaced mid-flight retargets instead
+                // of queueing behind the old one.
+                Group {
+                    if let tip = session.currentSuggestion {
+                        suggestionCard(tip)
+                            .arcIn()
+                    }
                 }
+                .animation(Motion.sheet, value: session.currentSuggestion)
 
                 actionRow
 

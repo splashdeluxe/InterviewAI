@@ -1,4 +1,5 @@
 import AppKit
+import InterviewAIKit
 import SwiftUI
 
 /// The Session Controls: what Stop opens while a session is running.
@@ -14,6 +15,8 @@ struct SessionControlsView: View {
     let onOutcome: (_ proceedQuit: Bool) -> Void
 
     @State private var confirmingDelete = false
+    /// Flipped on appear, so the choices can stagger in under it.
+    @State private var appeared = false
 
     var body: some View {
         VStack(spacing: Space.md) {
@@ -49,13 +52,39 @@ struct SessionControlsView: View {
         .background(Surface.panel)
     }
 
+    /// The peak-end rule, as one line: people remember a session
+    /// by its best moment and by how it ended, so while the user
+    /// decides how this one ends, the line states what there is
+    /// to remember it by — how long it ran, how much was heard,
+    /// and whether an answer stands ready at the end.
+    private var peakEndLine: String {
+        let total = Int(session.duration)
+        let durationText = String(format: "%02d:%02d", total / 60, total % 60)
+        let answerText = session.answer.isEmpty ? "no answer yet" : "last answer ready"
+        return "\(durationText) · \(session.finalSegments.count) lines · \(answerText)"
+    }
+
     private var choices: some View {
         VStack(spacing: Space.md) {
             Text("What would you like to do with your current session?")
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
+            Text(peakEndLine)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            // Staggering: the choices arrive one after another by
+            // index, not all in unison. Fitts's law: every choice
+            // also keeps at least the Kit's minimum hit target —
+            // the End and Delete styles already clear it on their
+            // padding, the Pause button's quiet style did not, so
+            // its frame states the target outright below.
             VStack(spacing: Space.sm) {
+                // Von Restorff: End is the one choice that looks
+                // different — the only filled, ink button in the
+                // list — so the choice the session is remembered
+                // by is the one that stands out.
                 Button {
                     session.stop()
                     onOutcome(true)
@@ -64,6 +93,7 @@ struct SessionControlsView: View {
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(InkButtonStyle())
+                .staggered(index: 0, appeared: appeared)
                 if !quitMode {
                     Button {
                         if session.isPaused {
@@ -78,6 +108,8 @@ struct SessionControlsView: View {
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(QuietButtonStyle())
+                    .frame(minHeight: CGFloat(MotionSpec.minimumHitTarget))
+                    .staggered(index: 1, appeared: appeared)
                 }
                 Button(role: .destructive) {
                     confirmingDelete = true
@@ -86,8 +118,10 @@ struct SessionControlsView: View {
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(DeleteButtonStyle())
+                .staggered(index: quitMode ? 1 : 2, appeared: appeared)
             }
         }
+        .onAppear { appeared = true }
     }
 
     private var deleteConfirmation: some View {

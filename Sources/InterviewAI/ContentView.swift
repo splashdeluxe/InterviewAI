@@ -17,7 +17,17 @@ struct ContentView: View {
         NavigationSplitView {
             sidebar
         } detail: {
+            // Arcs: switching pages is the detail's one journey, so
+            // the incoming page travels the arc (in lifted from the
+            // trailing side, out dropped the other way) instead of
+            // cutting or sliding straight. The `.id` makes the switch
+            // a real transition, and the sheet timing (slow in, slow
+            // out) rides on the sidebar value, so a switch mid-flight
+            // retargets instead of queueing.
             page
+                .id(model.sidebar ?? .live)
+                .arcIn()
+                .animation(Motion.sheet, value: model.sidebar)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(Surface.canvas)
         }
@@ -55,9 +65,16 @@ struct ContentView: View {
         @Bindable var model = model
         return VStack(spacing: 0) {
             sidebarHeader
-            List(SidebarItem.allCases, selection: $model.sidebar) { page in
-                Label(page.title, systemImage: page.symbol)
-                    .tag(page)
+            // Staggering: the six rows arrive one after another on
+            // first appearance, by index, instead of all in unison.
+            // It is a first-appearance moment only; selecting a row
+            // afterwards animates nothing here.
+            List(selection: $model.sidebar) {
+                ForEach(Array(SidebarItem.allCases.enumerated()), id: \.element) { index, page in
+                    Label(page.title, systemImage: page.symbol)
+                        .tag(page)
+                        .staggered(index: index)
+                }
             }
             .listStyle(.sidebar)
             statusStrip

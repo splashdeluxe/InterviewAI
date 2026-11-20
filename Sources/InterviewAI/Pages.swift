@@ -199,8 +199,11 @@ struct LivePage: View {
                         VStack(alignment: .leading, spacing: Space.sm) {
                             Text("Suggestions")
                                 .font(.headline)
-                            ForEach(Array(session.suggestions.enumerated()), id: \.offset) { _, tip in
+                            // Staggering: suggestion rows arrive
+                            // one after another by index.
+                            ForEach(Array(session.suggestions.enumerated()), id: \.offset) { index, tip in
                                 SuggestionRow(tip: tip)
+                                    .staggered(index: index)
                             }
                         }
                         .padding(Space.md)
@@ -237,7 +240,10 @@ struct LivePage: View {
                 } else {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: Space.sm) {
-                            ForEach(upcomingEvents.prefix(6)) { event in
+                            // Staggering: the next meetings arrive
+                            // one after another by index, not all
+                            // in unison.
+                            ForEach(Array(upcomingEvents.prefix(6).enumerated()), id: \.element.id) { index, event in
                                 Button {
                                     model.session.start(event: event)
                                 } label: {
@@ -253,6 +259,7 @@ struct LivePage: View {
                                 .buttonStyle(ChipButtonStyle())
                                 .disabled(model.session.isListening)
                                 .help("Start listening for this meeting")
+                                .staggered(index: index)
                             }
                         }
                     }
@@ -322,13 +329,30 @@ struct LivePage: View {
 /// session runs and again in the meeting it saved into.
 struct SuggestionRow: View {
     let tip: Suggestion
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Flipped on appear, so the leading tag can do its bounce.
+    @State private var appeared = false
 
     var body: some View {
         HStack(alignment: .top, spacing: Space.sm) {
+            // Secondary action: the row's leading element is its
+            // kind tag (the row carries no icon), so the tag does
+            // the bounce — it winds up at the anticipation scale
+            // and settles on the rubber-band spring, delayed a
+            // beat behind the row's own staggered arrival, as a
+            // small flourish backing up the main content.
             Text(tip.kind.tag)
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
                 .frame(width: 92, alignment: .leading)
+                .scaleEffect(appeared || reduceMotion ? 1 : CGFloat(MotionSpec.anticipationScale), anchor: .leading)
+                .animation(
+                    reduceMotion
+                        ? Motion.contentSwap(reduceMotion: true)
+                        : Motion.rubberBand.delay(MotionSpec.secondaryActionDelay),
+                    value: appeared
+                )
+                .onAppear { appeared = true }
             VStack(alignment: .leading, spacing: 2) {
                 Text(tip.text)
                     .font(.callout)
@@ -633,6 +657,10 @@ struct MeetingsPage: View {
     @State private var seekRequest: Double? = nil
     @AppStorage("reading.transcriptFontSize") private var transcriptFontSize = 14.0
     @AppStorage("transcript.showTimestamps") private var showTimestamps = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Flipped on the list's first appearance, so the list can
+    /// settle in under it (see the List modifiers in the body).
+    @State private var meetingsAppeared = false
 
     /// List rows are narrow: a composed title ("General · Nov 4, 2026
     /// at 9:19 PM") truncates before the time shows. Rows carry mode
@@ -676,6 +704,18 @@ struct MeetingsPage: View {
                     }
                 }
             }
+            // Staggering, honestly scoped for a List: rows recycle
+            // as they scroll, so a per-row appeared state would
+            // replay and fight the recycling. Instead the whole
+            // list fades in on its first appearance and settles on
+            // the rubber-band spring — the rows land together, but
+            // with the spring's overshoot settle, and the stagger
+            // animation itself is spent on the detail tab swap
+            // (see the detail VStack), where content does not
+            // recycle.
+            .opacity(meetingsAppeared || reduceMotion ? 1 : 0)
+            .animation(reduceMotion ? Motion.contentSwap(reduceMotion: true) : Motion.rubberBand, value: meetingsAppeared)
+            .onAppear { meetingsAppeared = true }
             .navigationSplitViewColumnWidth(min: 220, ideal: 280)
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
@@ -799,8 +839,9 @@ struct MeetingsPage: View {
                     VStack(alignment: .leading, spacing: Space.sm) {
                         Text("Suggestions from this session")
                             .font(.headline)
-                        ForEach(Array(meeting.suggestionList.enumerated()), id: \.offset) { _, tip in
+                        ForEach(Array(meeting.suggestionList.enumerated()), id: \.offset) { index, tip in
                             SuggestionRow(tip: tip)
+                                .staggered(index: index)
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -1079,6 +1120,12 @@ struct MeetingsPage: View {
                 }
             }
             .padding(Space.margin)
+            // The detail tab swap, animated with the stagger
+            // animation (index 0, so no delay — the timing and
+            // curve are what carry over): switching Transcript /
+            // Notes / Summary / Questions / Create cross-settles
+            // instead of cutting hard.
+            .animation(Motion.stagger(index: 0, reduceMotion: reduceMotion), value: tab)
             .onChange(of: meeting.id) { _, _ in
                 showCleaned = false
                 cleanFailed = false

@@ -12,9 +12,13 @@ import SwiftUI
 /// builds the items from live state and runs what was picked.
 struct CommandPaletteView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Query(sort: \Meeting.startedAt, order: .reverse) private var meetings: [Meeting]
     @State private var query = ""
     @State private var selectedIndex = 0
+    /// The panel's entrance, flipped on appear: it pops in from
+    /// the top (see the scale anchor on the body).
+    @State private var appeared = false
     @FocusState private var fieldFocused: Bool
 
     /// One row on screen: the Kit item, its symbol, and what
@@ -49,6 +53,10 @@ struct CommandPaletteView: View {
             Rectangle().fill(Surface.hairline).frame(height: 1)
             resultsList(visible)
             Rectangle().fill(Surface.hairline).frame(height: 1)
+            // Hick's law, in the footer: the more choices a person
+            // faces, the slower the decision, so the footer teaches
+            // exactly three things — navigate, run, close — and
+            // nothing else competes with them.
             HStack(spacing: Space.md) {
                 Text("↑↓ Navigate")
                 Text("↵ Run")
@@ -64,7 +72,21 @@ struct CommandPaletteView: View {
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: Radius.overlay, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: Radius.overlay, style: .continuous)
             .strokeBorder(Surface.hairline, lineWidth: 1))
-        .onAppear { fieldFocused = true }
+        // Origin awareness, with rubber banding on the landing:
+        // the panel is summoned at the top of the window (the
+        // window positions it a step down from the top edge), so
+        // it grows out of the top, anchored there, starting at
+        // 0.95 — and it lands on the rubber-band spring, overshoots
+        // a touch, and settles. Reduced motion skips the pop and
+        // the panel is simply there.
+        .motionPop(anchor: .top)
+        .scaleEffect(appeared || reduceMotion ? 1 : 0.95, anchor: .top)
+        .opacity(appeared || reduceMotion ? 1 : 0)
+        .animation(Motion.rubberBand, value: appeared)
+        .onAppear {
+            fieldFocused = true
+            appeared = true
+        }
         .onChange(of: query) { selectedIndex = 0 }
         .onMoveCommand { direction in
             if direction == .up { moveSelection(by: -1, count: visible.count) }
@@ -139,11 +161,22 @@ struct CommandPaletteView: View {
         }
         .padding(.horizontal, Space.md)
         .padding(.vertical, Space.sm)
+        // Fitts's law: bigger, closer targets are faster to hit.
+        // The vertical padding already put a row over 32 pt tall;
+        // the minimum height now states the Kit's minimum hit
+        // target outright, so a future padding trim cannot quietly
+        // shrink a row below it.
+        .frame(minHeight: CGFloat(MotionSpec.minimumHitTarget))
         .background(index == selectedIndex ? Surface.inset : Color.clear,
                     in: RoundedRectangle(cornerRadius: Radius.control, style: .continuous))
         .contentShape(Rectangle())
         .onHover { if $0 { selectedIndex = index } }
         .onTapGesture { run(entry) }
+        // Staggering: rows arrive one after another by index.
+        // This one place covers both list shapes above — the
+        // grouped list and the ranked list both build their rows
+        // through here.
+        .staggered(index: index)
     }
 
     private func moveSelection(by delta: Int, count: Int) {
