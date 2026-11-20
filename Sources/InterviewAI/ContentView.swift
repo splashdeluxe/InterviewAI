@@ -1,4 +1,5 @@
 import AppKit
+import InterviewAIKit
 import SwiftUI
 
 extension Notification.Name {
@@ -18,11 +19,13 @@ private struct SidebarHeightKey: PreferenceKey {
 struct ContentView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.openSettings) private var openSettings
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage("onboarding.completed") private var onboardingCompleted = false
     @AppStorage("onboarding.v2.completed") private var onboardingV2Completed = false
     @State private var showOnboarding = false
     @State private var hoveredRailID: String?
     @State private var sidebarHeight: CGFloat = 0
+    @State private var gearRotation: Double = 0
 
     var body: some View {
         NavigationSplitView {
@@ -94,6 +97,8 @@ struct ContentView: View {
             }
             .padding(.top, Space.sm)
             Spacer(minLength: 0)
+            settingsButton
+                .padding(.bottom, Space.sm)
             railFoot
         }
         .navigationSplitViewColumnWidth(min: 64, ideal: 64, max: 64)
@@ -132,9 +137,7 @@ struct ContentView: View {
         return Button {
             model.sidebar = page
         } label: {
-            Image(systemName: page.symbol)
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(selected || hovered ? Surface.ink : Color.secondary)
+            railGlyph(page, selected: selected, hovered: hovered)
                 .frame(width: 40, height: 40)
                 .background {
                     RoundedRectangle(cornerRadius: Radius.card, style: .continuous)
@@ -151,6 +154,61 @@ struct ContentView: View {
                 hoveredRailID = nil
             }
         }
+        .animation(Motion.press, value: hovered)
+    }
+
+    /// A page's glyph, with the Flaticon move: on hover the glyph
+    /// plays once, the waveform pulsing and the others hopping,
+    /// and pops to the exaggeration scale on the rubber-band
+    /// spring. Reduced motion keeps the plain glyph at rest size.
+    @ViewBuilder
+    private func railGlyph(_ page: SidebarItem, selected: Bool, hovered: Bool) -> some View {
+        let glyph = Image(systemName: page.symbol)
+            .font(.system(size: 16, weight: .semibold))
+            .foregroundStyle(selected || hovered ? Surface.ink : Color.secondary)
+            .scaleEffect(hovered && !reduceMotion ? CGFloat(MotionSpec.exaggerationScale) : 1)
+            .animation(Motion.rubberBand, value: hovered)
+        if reduceMotion {
+            glyph
+        } else if page == .live {
+            glyph.symbolEffect(.pulse, options: .nonRepeating, value: hovered)
+        } else {
+            glyph.symbolEffect(.bounce, options: .nonRepeating, value: hovered)
+        }
+    }
+
+    /// Settings gets its own rail button, the way Muse keeps it
+    /// at the foot of its rail: a gear that turns half a turn on
+    /// the rubber-band spring when the pointer lands, with the
+    /// same hover tag as the pages. It opens the same Settings
+    /// window as the corner menu's item and as ⌘,.
+    private var settingsButton: some View {
+        let hovered = hoveredRailID == "settings"
+        return Button {
+            openSettings()
+        } label: {
+            Image(systemName: "gearshape")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(hovered ? Surface.ink : Color.secondary)
+                .rotationEffect(.degrees(gearRotation))
+                .scaleEffect(hovered && !reduceMotion ? CGFloat(MotionSpec.exaggerationScale) : 1)
+                .frame(width: 40, height: 40)
+                .background {
+                    RoundedRectangle(cornerRadius: Radius.card, style: .continuous)
+                        .fill(hovered ? Surface.control : Color.clear)
+                }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Settings")
+        .onHover { inside in
+            if inside {
+                hoveredRailID = "settings"
+                if !reduceMotion { gearRotation += 180 }
+            } else if hoveredRailID == "settings" {
+                hoveredRailID = nil
+            }
+        }
+        .animation(Motion.rubberBand, value: gearRotation)
         .animation(Motion.press, value: hovered)
     }
 
@@ -199,10 +257,10 @@ struct ContentView: View {
                     .frame(height: 32)
                     .panelSurface(radius: Radius.control)
                     .offset(x: 64 + Space.sm, y: midY - 16) // grid: ok the tag is placed from the rail's fixed layout, not nudged
-                    .transition(.opacity.combined(with: .offset(x: -4))) // grid: ok the tag slides the last 4 pt out of the rail edge
+                    .transition(.opacity.combined(with: .offset(x: -8))) // grid: ok the tag springs out of the rail edge, starting 8 pt inside it
             }
         }
-        .animation(Motion.pop, value: hoveredRailID)
+        .animation(Motion.rubberBand, value: hoveredRailID)
         .allowsHitTesting(false)
     }
 
@@ -214,6 +272,8 @@ struct ContentView: View {
         switch id {
         case "menu":
             return "Menu"
+        case "settings":
+            return "Settings"
         case "status":
             let state = model.session.isListening ? "Listening" : "Idle"
             let detail = model.session.status
@@ -225,13 +285,18 @@ struct ContentView: View {
 
     /// Where the hover tag sits, from the rail's fixed layout: the
     /// header block is 52 (tile 28, padding 12 above and below),
-    /// the icons start 8 lower, each is 40 tall with 4 between, and
-    /// the foot row's centre is 25 above the rail's foot (padding
-    /// 12 plus half the 26 pt menu button).
+    /// the icons start 8 lower, each is 40 tall with 4 between,
+    /// the gear's centre is 78 above the rail's foot (foot 50,
+    /// gap 8, half the gear), and the foot row's centre is 25
+    /// above the foot (padding 12 plus half the 26 pt menu button).
     private func railLabelMidY(for id: String) -> CGFloat? {
         if let page = SidebarItem(rawValue: id),
            let index = SidebarItem.allCases.firstIndex(of: page) {
             return 52 + Space.sm + 20 + CGFloat(index) * 44
+        }
+        if id == "settings" {
+            guard sidebarHeight > 0 else { return nil }
+            return sidebarHeight - 78 // grid: ok foot 50 plus 8 gap plus half the 40 pt gear button
         }
         guard id == "menu" || id == "status", sidebarHeight > 0 else { return nil }
         return sidebarHeight - 25 // grid: ok 12 padding plus half the 26 pt menu button
