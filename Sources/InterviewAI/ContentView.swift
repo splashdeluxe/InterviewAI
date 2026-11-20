@@ -201,7 +201,7 @@ struct ContentView: View {
                 hoveredRailID = nil
             }
         }
-        .animation(Motion.rubberBand, value: hovered)
+        .animation(RailTiming.glide, value: hovered)
     }
 
     /// The hover tag: a small panel card that slides out of the
@@ -221,7 +221,7 @@ struct ContentView: View {
                     .transition(.opacity.combined(with: .offset(x: -8)).combined(with: .scale(scale: 0.92, anchor: .leading))) // grid: ok the tag springs out of the rail edge, growing from its left edge
             }
         }
-        .animation(Motion.rubberBand, value: hoveredRailID)
+        .animation(RailTiming.glide, value: hoveredRailID)
         .allowsHitTesting(false)
     }
 
@@ -282,6 +282,16 @@ private struct RailMove: Equatable {
     static let rest = RailMove()
 }
 
+/// The rail's hover timing, slower and softer than the app's
+/// rubber band: the second pass moved too fast on hover, so
+/// the glyph moves, the tag and the gear all glide on these.
+/// A keyframed move runs about a second and a half end to
+/// end; the glide carries the scale pop and the tag.
+private enum RailTiming {
+    static let glide = Animation.spring(response: 0.45, dampingFraction: 0.8)
+    static let phase = Animation.spring(response: 0.34, dampingFraction: 0.74)
+}
+
 /// One page button in the rail. It owns its hover-play trigger,
 /// so a glyph's move fires on hover-in only and never replays
 /// on the way out. The moves are the Flaticon idea in the app's
@@ -324,7 +334,7 @@ private struct RailPageButton: View {
             .font(.system(size: 16, weight: .semibold))
             .foregroundStyle(selected || hovered ? Surface.ink : Color.secondary)
             .scaleEffect(hovered && !reduceMotion ? CGFloat(MotionSpec.exaggerationScale) : 1)
-            .animation(Motion.rubberBand, value: hovered)
+            .animation(RailTiming.glide, value: hovered)
         if reduceMotion {
             base
         } else if page == .live {
@@ -336,8 +346,7 @@ private struct RailPageButton: View {
                     .rotationEffect(.degrees(phase.tilt))
                     .scaleEffect(x: phase.squashX, y: phase.squashY)
             } animation: { _ in
-                .spring(response: MotionSpec.swapDuration,
-                        dampingFraction: MotionSpec.followThroughSpringDamping)
+                RailTiming.phase
             }
         }
     }
