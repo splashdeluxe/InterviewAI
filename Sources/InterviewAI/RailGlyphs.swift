@@ -224,9 +224,9 @@ private struct ModesGlyph: View {
                               control2: CGPoint(x: 17.7, y: 22.8))
             }
             .stroke(tint, style: StrokeStyle(lineWidth: unit * 2.2, lineCap: .round))
-            arc(radius: 6.5)
+            arc(radius: 4.5)
                 .opacity(arcOpacity(index: 0, time: time))
-            arc(radius: 11)
+            arc(radius: 8)
                 .opacity(arcOpacity(index: 1, time: time))
         }
     }
@@ -235,9 +235,12 @@ private struct ModesGlyph: View {
         // The clockwise flag reads backwards in this
         // y-down space: false is what bulges the arc away
         // from the person, as drawn in run 1. True wraps it
-        // through the figure instead.
+        // through the figure instead. The pair sits a
+        // little further from the head than run 1 had them,
+        // and smaller: Nils read the first port's waves as
+        // too big and too close to the mouth.
         GlyphPath { path in
-            path.addArc(center: CGPoint(x: 22.5, y: 14.5),
+            path.addArc(center: CGPoint(x: 23.5, y: 14.5),
                         radius: radius,
                         startAngle: .degrees(-90),
                         endAngle: .degrees(90),

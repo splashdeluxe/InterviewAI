@@ -7,15 +7,6 @@ extension Notification.Name {
     static let replayOnboarding = Notification.Name("InterviewAI.replayOnboarding")
 }
 
-/// The rail's height, reported by the sidebar so the root overlay
-/// can level the hover tag with the rail's foot row.
-private struct SidebarHeightKey: PreferenceKey {
-    static let defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
-    }
-}
-
 struct ContentView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.openSettings) private var openSettings
@@ -24,7 +15,6 @@ struct ContentView: View {
     @AppStorage("onboarding.v2.completed") private var onboardingV2Completed = false
     @State private var showOnboarding = false
     @State private var hoveredRailID: String?
-    @State private var sidebarHeight: CGFloat = 0
 
     var body: some View {
         NavigationSplitView {
@@ -44,8 +34,6 @@ struct ContentView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(Surface.canvas)
         }
-        .overlay(alignment: .topLeading) { railHoverLabel }
-        .onPreferenceChange(SidebarHeightKey.self) { sidebarHeight = $0 }
         .onAppear {
             model.openSettingsAction = { openSettings() }
             // The v2 wizard is for fresh installs only: an install
@@ -78,15 +66,15 @@ struct ContentView: View {
 
     /// The sidebar is an icon rail, rebuilt after the Muse rail
     /// Nils recorded: quiet icons in a fixed 80 pt column, the
-    /// current page filled, and on hover a name tag slides out of
-    /// the rail's edge (see `railHoverLabel`). The tag is drawn by
-    /// the root overlay, not by the rail itself, so it crosses the
-    /// split view's column edge without being clipped. The rail
-    /// and its icons were sized up once, at Nils's word: the
-    /// first cut read too small.
+    /// current page filled, the icons moving on hover. Icons
+    /// only, no words: a round of name tags that slid out on
+    /// hover was removed at Nils's word, the run 1 prototype
+    /// was better without the text. No logo tile at the top
+    /// either: Nils deleted that too, the rail starts with
+    /// the icons. The rail and its icons were sized up
+    /// once, at Nils's word: the first cut read too small.
     private var sidebar: some View {
         VStack(spacing: 0) {
-            railHeader
             // Staggering: the six icons arrive one after another on
             // first appearance, by index, instead of all in unison.
             // It is a first-appearance moment only; selecting a page
@@ -101,29 +89,6 @@ struct ContentView: View {
             railFoot
         }
         .navigationSplitViewColumnWidth(min: 80, ideal: 80, max: 80)
-        .background {
-            GeometryReader { proxy in
-                Color.clear.preference(key: SidebarHeightKey.self, value: proxy.size.height)
-            }
-        }
-    }
-
-    /// The product mark at the top of the rail: the same ink tile
-    /// the wide sidebar carried, now on its own.
-    private var railHeader: some View {
-        RoundedRectangle(cornerRadius: Radius.control, style: .continuous)
-            .fill(Surface.ink)
-            .frame(width: 36, height: 36)
-            .overlay {
-                Image(systemName: "waveform")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(Surface.onInk)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, Space.md)
-            .overlay(alignment: .bottom) {
-                Rectangle().fill(Surface.hairline).frame(height: 1)
-            }
     }
 
     /// One page in the rail: an icon in a 52 pt target, filled when
@@ -150,7 +115,6 @@ struct ContentView: View {
 
     /// The foot of the rail: the corner menu alone on a
     /// panel step, split from the icons by one hairline.
-    /// Its word lives in the hover tag, like the pages'.
     /// The menu sits centred in a row, as the original
     /// foot had it.
     private var railFoot: some View {
@@ -175,10 +139,9 @@ struct ContentView: View {
     /// its own bezel as a wide pill whatever label it is
     /// given, through three attempted fixes, while a plain
     /// button renders its label as drawn, like the gear
-    /// did. On hover the drawn lines stagger, the button
-    /// pops, and the Menu tag slides out. The session
-    /// state the dot carried still shows on the Live page
-    /// and in the overlay.
+    /// did. On hover the drawn lines stagger and the
+    /// button pops. The session state the dot carried
+    /// still shows on the Live page and in the overlay.
     private var cornerMenuButton: some View {
         let hovered = hoveredRailID == "menu"
         return Button {
@@ -200,48 +163,6 @@ struct ContentView: View {
             }
         }
         .animation(RailTiming.glide, value: hovered)
-    }
-
-    /// The hover tag: a small panel card that slides out of the
-    /// rail's trailing edge, level with the icon under the pointer.
-    /// Hit testing is off, so it never eats a click meant for a page.
-    private var railHoverLabel: some View {
-        ZStack(alignment: .topLeading) {
-            if let id = hoveredRailID, let text = railLabelText(for: id),
-               let midY = railLabelMidY(for: id) {
-                Text(text)
-                    .font(.callout.weight(.medium))
-                    .foregroundStyle(Surface.ink)
-                    .padding(.horizontal, Space.sm)
-                    .frame(height: 32)
-                    .panelSurface(radius: Radius.control)
-                    .offset(x: 80 + Space.sm, y: midY - 16) // grid: ok the tag is placed from the rail's fixed layout, not nudged
-                    .transition(.opacity.combined(with: .offset(x: -8)).combined(with: .scale(scale: 0.92, anchor: .leading))) // grid: ok the tag springs out of the rail edge, growing from its left edge
-            }
-        }
-        .animation(RailTiming.glide, value: hoveredRailID)
-        .allowsHitTesting(false)
-    }
-
-    /// What the hover tag says for a rail target: a page's
-    /// name, or Menu for the foot's button.
-    private func railLabelText(for id: String) -> String? {
-        if let page = SidebarItem(rawValue: id) { return page.title }
-        return id == "menu" ? "Menu" : nil
-    }
-
-    /// Where the hover tag sits, from the rail's fixed layout: the
-    /// header block is 60 (tile 36, padding 12 above and below),
-    /// the icons start 8 lower, each is 52 tall with 8 between,
-    /// and the foot row's centre is 34 above the rail's foot
-    /// (padding 12 plus half the 44 pt menu button).
-    private func railLabelMidY(for id: String) -> CGFloat? {
-        if let page = SidebarItem(rawValue: id),
-           let index = SidebarItem.allCases.firstIndex(of: page) {
-            return 60 + Space.sm + 26 + CGFloat(index) * 60
-        }
-        guard id == "menu", sidebarHeight > 0 else { return nil }
-        return sidebarHeight - 34 // grid: ok 12 padding plus half the 44 pt menu button
     }
 
     @ViewBuilder
@@ -271,9 +192,9 @@ private struct RailMove: Equatable {
 
 /// The rail's hover timing, slower and softer than the app's
 /// rubber band: the second pass moved too fast on hover, so
-/// the glyph moves, the tag and the gear all glide on these.
-/// A keyframed move runs about a second and a half end to
-/// end; the glide carries the scale pop and the tag.
+/// the glyph moves and the button pop glide on these. A
+/// keyframed move runs about a second and a half end to
+/// end; the glide carries the scale pop.
 enum RailTiming {
     static let glide = Animation.spring(response: 0.45, dampingFraction: 0.8)
     static let phase = Animation.spring(response: 0.34, dampingFraction: 0.74)
