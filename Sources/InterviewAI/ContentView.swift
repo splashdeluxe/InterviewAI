@@ -25,7 +25,6 @@ struct ContentView: View {
     @State private var showOnboarding = false
     @State private var hoveredRailID: String?
     @State private var sidebarHeight: CGFloat = 0
-    @State private var gearRotation: Double = 0
 
     var body: some View {
         NavigationSplitView {
@@ -97,8 +96,6 @@ struct ContentView: View {
             }
             .padding(.top, Space.sm)
             Spacer(minLength: 0)
-            settingsButton
-                .padding(.bottom, Space.sm)
             railFoot
         }
         .navigationSplitViewColumnWidth(min: 64, ideal: 64, max: 64)
@@ -132,99 +129,33 @@ struct ContentView: View {
     /// same sidebar value the old list bound to, so page switching,
     /// the palette and the shortcuts all keep their one path.
     private func railButton(_ page: SidebarItem, index: Int) -> some View {
-        let selected = (model.sidebar ?? .live) == page
-        let hovered = hoveredRailID == page.id
-        return Button {
-            model.sidebar = page
-        } label: {
-            railGlyph(page, selected: selected, hovered: hovered)
-                .frame(width: 40, height: 40)
-                .background {
-                    RoundedRectangle(cornerRadius: Radius.card, style: .continuous)
-                        .fill(selected ? Surface.inset : hovered ? Surface.control : Color.clear)
+        RailPageButton(
+            page: page,
+            selected: (model.sidebar ?? .live) == page,
+            hovered: hoveredRailID == page.id,
+            reduceMotion: reduceMotion,
+            onSelect: { model.sidebar = page },
+            onHover: { inside in
+                if inside {
+                    hoveredRailID = page.id
+                } else if hoveredRailID == page.id {
+                    hoveredRailID = nil
                 }
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(page.title)
+            }
+        )
         .staggered(index: index)
-        .onHover { inside in
-            if inside {
-                hoveredRailID = page.id
-            } else if hoveredRailID == page.id {
-                hoveredRailID = nil
-            }
-        }
-        .animation(Motion.press, value: hovered)
     }
 
-    /// A page's glyph, with the Flaticon move: on hover the glyph
-    /// plays once, the waveform pulsing and the others hopping,
-    /// and pops to the exaggeration scale on the rubber-band
-    /// spring. Reduced motion keeps the plain glyph at rest size.
-    @ViewBuilder
-    private func railGlyph(_ page: SidebarItem, selected: Bool, hovered: Bool) -> some View {
-        let glyph = Image(systemName: page.symbol)
-            .font(.system(size: 16, weight: .semibold))
-            .foregroundStyle(selected || hovered ? Surface.ink : Color.secondary)
-            .scaleEffect(hovered && !reduceMotion ? CGFloat(MotionSpec.exaggerationScale) : 1)
-            .animation(Motion.rubberBand, value: hovered)
-        if reduceMotion {
-            glyph
-        } else if page == .live {
-            glyph.symbolEffect(.pulse, options: .nonRepeating, value: hovered)
-        } else {
-            glyph.symbolEffect(.bounce, options: .nonRepeating, value: hovered)
-        }
-    }
-
-    /// Settings gets its own rail button, the way Muse keeps it
-    /// at the foot of its rail: a gear that turns half a turn on
-    /// the rubber-band spring when the pointer lands, with the
-    /// same hover tag as the pages. It opens the same Settings
-    /// window as the corner menu's item and as ⌘,.
-    private var settingsButton: some View {
-        let hovered = hoveredRailID == "settings"
-        return Button {
-            openSettings()
-        } label: {
-            Image(systemName: "gearshape")
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(hovered ? Surface.ink : Color.secondary)
-                .rotationEffect(.degrees(gearRotation))
-                .scaleEffect(hovered && !reduceMotion ? CGFloat(MotionSpec.exaggerationScale) : 1)
-                .frame(width: 40, height: 40)
-                .background {
-                    RoundedRectangle(cornerRadius: Radius.card, style: .continuous)
-                        .fill(hovered ? Surface.control : Color.clear)
-                }
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Settings")
-        .onHover { inside in
-            if inside {
-                hoveredRailID = "settings"
-                if !reduceMotion { gearRotation += 180 }
-            } else if hoveredRailID == "settings" {
-                hoveredRailID = nil
-            }
-        }
-        .animation(Motion.rubberBand, value: gearRotation)
-        .animation(Motion.press, value: hovered)
-    }
-
-    /// The foot of the rail: the corner menu and the session dot
-    /// side by side on a panel step, split from the icons by one
-    /// hairline. Their words live in the hover tag, like the pages'.
+    /// The foot of the rail, in Muse's pattern: one round
+    /// Settings button and the session dot side by side on a
+    /// panel step, split from the icons by one hairline. Their
+    /// words live in the hover tag, like the pages'. The corner
+    /// menu this replaces lost nothing: Keyboard Shortcuts sits
+    /// in the app menu at ⌘/, Report an Issue in About and in
+    /// the palette.
     private var railFoot: some View {
         HStack(spacing: Space.sm) {
-            cornerMenuButton
-                .onHover { inside in
-                    if inside {
-                        hoveredRailID = "menu"
-                    } else if hoveredRailID == "menu" {
-                        hoveredRailID = nil
-                    }
-                }
+            footSettingsButton
             StatusDot(listening: model.session.isListening)
                 .frame(width: 16, height: 16)
                 .onHover { inside in
@@ -243,6 +174,36 @@ struct ContentView: View {
         }
     }
 
+    /// The Settings button: a 32 pt soft circle with the gear in
+    /// ink, opening Settings on click. On hover the gear turns a
+    /// quarter turn on the rubber-band spring and pops to the
+    /// exaggeration scale, and the Settings tag slides out.
+    private var footSettingsButton: some View {
+        let hovered = hoveredRailID == "settings"
+        return Button {
+            openSettings()
+        } label: {
+            Image(systemName: "gearshape")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(Surface.ink)
+                .rotationEffect(.degrees(hovered && !reduceMotion ? 90 : 0))
+                .scaleEffect(hovered && !reduceMotion ? CGFloat(MotionSpec.exaggerationScale) : 1)
+                .frame(width: 32, height: 32)
+                .background(Circle().fill(Surface.control))
+                .overlay(Circle().strokeBorder(Surface.controlBorder, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Settings")
+        .onHover { inside in
+            if inside {
+                hoveredRailID = "settings"
+            } else if hoveredRailID == "settings" {
+                hoveredRailID = nil
+            }
+        }
+        .animation(Motion.rubberBand, value: hovered)
+    }
+
     /// The hover tag: a small panel card that slides out of the
     /// rail's trailing edge, level with the icon under the pointer.
     /// Hit testing is off, so it never eats a click meant for a page.
@@ -257,7 +218,7 @@ struct ContentView: View {
                     .frame(height: 32)
                     .panelSurface(radius: Radius.control)
                     .offset(x: 64 + Space.sm, y: midY - 16) // grid: ok the tag is placed from the rail's fixed layout, not nudged
-                    .transition(.opacity.combined(with: .offset(x: -8))) // grid: ok the tag springs out of the rail edge, starting 8 pt inside it
+                    .transition(.opacity.combined(with: .offset(x: -8)).combined(with: .scale(scale: 0.92, anchor: .leading))) // grid: ok the tag springs out of the rail edge, growing from its left edge
             }
         }
         .animation(Motion.rubberBand, value: hoveredRailID)
@@ -265,13 +226,12 @@ struct ContentView: View {
     }
 
     /// What the hover tag says for a rail target: a page's name,
-    /// the menu's name, or the session state in words, the two
-    /// pieces of text the old status strip carried.
+    /// Settings for the foot's round button, or the session state
+    /// in words, the two pieces of text the old status strip
+    /// carried.
     private func railLabelText(for id: String) -> String? {
         if let page = SidebarItem(rawValue: id) { return page.title }
         switch id {
-        case "menu":
-            return "Menu"
         case "settings":
             return "Settings"
         case "status":
@@ -286,56 +246,15 @@ struct ContentView: View {
     /// Where the hover tag sits, from the rail's fixed layout: the
     /// header block is 52 (tile 28, padding 12 above and below),
     /// the icons start 8 lower, each is 40 tall with 4 between,
-    /// the gear's centre is 78 above the rail's foot (foot 50,
-    /// gap 8, half the gear), and the foot row's centre is 25
-    /// above the foot (padding 12 plus half the 26 pt menu button).
+    /// and the foot row's centre is 28 above the rail's foot
+    /// (padding 12 plus half the 32 pt settings button).
     private func railLabelMidY(for id: String) -> CGFloat? {
         if let page = SidebarItem(rawValue: id),
            let index = SidebarItem.allCases.firstIndex(of: page) {
             return 52 + Space.sm + 20 + CGFloat(index) * 44
         }
-        if id == "settings" {
-            guard sidebarHeight > 0 else { return nil }
-            return sidebarHeight - 78 // grid: ok foot 50 plus 8 gap plus half the 40 pt gear button
-        }
-        guard id == "menu" || id == "status", sidebarHeight > 0 else { return nil }
-        return sidebarHeight - 25 // grid: ok 12 padding plus half the 26 pt menu button
-    }
-
-    /// The corner menu: one round button at the foot of the sidebar,
-    /// opening a native menu. A native menu renders correctly in both
-    /// appearances (the old custom dark popover could come up white on
-    /// white) and gives the shortcuts a real submenu.
-    private var cornerMenuButton: some View {
-        Menu {
-            Menu {
-                ForEach(ShortcutsView.rows) { row in
-                    Text("\(row.keys) — \(row.action)")
-                }
-            } label: {
-                Label("Keyboard Shortcuts", systemImage: "keyboard")
-            }
-            Button {
-                ReportIssueWindow.show()
-            } label: {
-                Label("Report an Issue", systemImage: "ant")
-            }
-            Divider()
-            Button {
-                openSettings()
-            } label: {
-                Label("Settings", systemImage: "gearshape")
-            }
-            .keyboardShortcut(",", modifiers: .command)
-        } label: {
-            Image(systemName: "line.3.horizontal")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(Surface.onInk)
-                .frame(width: 26, height: 26) // grid: ok glyph hit frame
-                .background(Circle().fill(Surface.ink))
-        }
-        .menuIndicator(.hidden)
-        .help("Menu")
+        guard id == "settings" || id == "status", sidebarHeight > 0 else { return nil }
+        return sidebarHeight - 28 // grid: ok 12 padding plus half the 32 pt settings button
     }
 
     @ViewBuilder
@@ -347,6 +266,122 @@ struct ContentView: View {
         case .context: ContextPage()
         case .intelligence: IntelligencePage()
         case .ask: AskPage()
+        }
+    }
+}
+
+/// One keyframe of a rail glyph's hover move: how far it lifts,
+/// slides and tips, and how it squashes, all from rest.
+private struct RailMove: Equatable {
+    var lift: CGFloat = 0
+    var slide: CGFloat = 0
+    var tilt: Double = 0
+    var squashX: CGFloat = 1
+    var squashY: CGFloat = 1
+
+    static let rest = RailMove()
+}
+
+/// One page button in the rail. It owns its hover-play trigger,
+/// so a glyph's move fires on hover-in only and never replays
+/// on the way out. The moves are the Flaticon idea in the app's
+/// own motion: the waveform's bars ripple for as long as the
+/// pointer stays, and every other glyph plays its keyframed
+/// move once, the clock's arrow sweeping, the person waving,
+/// the document hopping with a squash, the card tipping, the
+/// magnifier searching in a small loop.
+private struct RailPageButton: View {
+    let page: SidebarItem
+    let selected: Bool
+    let hovered: Bool
+    let reduceMotion: Bool
+    let onSelect: () -> Void
+    let onHover: (Bool) -> Void
+
+    @State private var playCount = 0
+
+    var body: some View {
+        Button(action: onSelect) {
+            glyph
+                .frame(width: 40, height: 40)
+                .background {
+                    RoundedRectangle(cornerRadius: Radius.card, style: .continuous)
+                        .fill(selected ? Surface.inset : hovered ? Surface.control : Color.clear)
+                }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(page.title)
+        .onHover { inside in
+            if inside && !reduceMotion { playCount += 1 }
+            onHover(inside)
+        }
+        .animation(Motion.press, value: hovered)
+    }
+
+    @ViewBuilder
+    private var glyph: some View {
+        let base = Image(systemName: page.symbol)
+            .font(.system(size: 16, weight: .semibold))
+            .foregroundStyle(selected || hovered ? Surface.ink : Color.secondary)
+            .scaleEffect(hovered && !reduceMotion ? CGFloat(MotionSpec.exaggerationScale) : 1)
+            .animation(Motion.rubberBand, value: hovered)
+        if reduceMotion {
+            base
+        } else if page == .live {
+            base.symbolEffect(.variableColor.iterative, options: .repeating, isActive: hovered)
+        } else {
+            PhaseAnimator(RailMoves.moves(for: page), trigger: playCount) { phase in
+                base
+                    .offset(x: phase.slide, y: phase.lift) // grid: ok the hover move is keyframed, not a layout nudge
+                    .rotationEffect(.degrees(phase.tilt))
+                    .scaleEffect(x: phase.squashX, y: phase.squashY)
+            } animation: { _ in
+                .spring(response: MotionSpec.swapDuration,
+                        dampingFraction: MotionSpec.followThroughSpringDamping)
+            }
+        }
+    }
+}
+
+/// The keyframed hover moves, one per page. Live is absent: its
+/// waveform ripples instead of hopping.
+private enum RailMoves {
+    static func moves(for page: SidebarItem) -> [RailMove] {
+        switch page {
+        case .live:
+            return [.rest]
+        case .meetings:
+            // The arrow sweeps back, overshoots, and settles.
+            return [.rest,
+                    RailMove(tilt: -28),
+                    RailMove(tilt: 10),
+                    .rest]
+        case .modes:
+            // A wave: tip one way, the other, smaller, rest.
+            return [.rest,
+                    RailMove(tilt: -14),
+                    RailMove(tilt: 12),
+                    RailMove(tilt: -6),
+                    .rest]
+        case .context:
+            // A hop: stretch up, land with a squash, settle.
+            return [.rest,
+                    RailMove(lift: -6, squashX: 0.94, squashY: 1.06),
+                    RailMove(squashX: 1.08, squashY: 0.92),
+                    .rest]
+        case .intelligence:
+            // The card tips to one side, then the other.
+            return [.rest,
+                    RailMove(lift: -2, tilt: 12),
+                    RailMove(tilt: -7),
+                    .rest]
+        case .ask:
+            // Searching: the glass loops a small circle.
+            return [.rest,
+                    RailMove(lift: -2, slide: 3),
+                    RailMove(lift: 1, slide: -3),
+                    RailMove(lift: 2, slide: 2),
+                    .rest]
         }
     }
 }
