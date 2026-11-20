@@ -44,53 +44,41 @@ struct RailGlyph: View {
     }
 }
 
-/// The settings gear, drawn the same way: eight teeth
-/// around a ring. While hovered it turns continuously,
-/// one slow turn every nine seconds, and glides back to
-/// rest when the pointer leaves.
-struct GearGlyph: View {
+/// The corner menu's glyph, drawn the same way: three
+/// lines in the glyphs' 32-unit space. On hover the
+/// lines stagger, the outer two sliding one way and the
+/// middle the other, on the rail's glide. It lays out at
+/// a fixed size instead of reading one through a
+/// GeometryReader, so it stays a plain fixed label.
+struct MenuGlyph: View {
     let hovered: Bool
     let reduceMotion: Bool
     let tint: Color
 
-    @State private var spin: Double = 0
+    /// The glyph only ever sits in the menu button's
+    /// 28 pt frame, so its unit is that frame over 32.
+    private let unit: CGFloat = 28.0 / 32.0
 
     var body: some View {
-        GeometryReader { proxy in
-            let unit = proxy.size.width / 32
-            ZStack {
-                ForEach(0 ..< 8, id: \.self) { index in
-                    ZStack {
-                        Capsule()
-                            .fill(tint)
-                            .frame(width: unit * 2.8, height: unit * 5.4)
-                            .offset(y: -unit * 10.3) // grid: ok the offset places a part inside the drawn glyph's 32-unit space
-                    }
-                    .frame(width: unit * 32, height: unit * 32)
-                    .rotationEffect(.degrees(Double(index) * 45))
-                }
-                Circle()
-                    .stroke(tint, lineWidth: unit * 2.2)
-                    .frame(width: unit * 15.2, height: unit * 15.2)
-                Circle()
-                    .stroke(tint, lineWidth: unit * 2.2)
-                    .frame(width: unit * 6, height: unit * 6)
-            }
-            .frame(width: proxy.size.width, height: proxy.size.height)
-            .rotationEffect(.degrees(spin))
+        ZStack {
+            line(dy: -5.5, dx: slide(-2))
+            line(dy: 0, dx: slide(2))
+            line(dy: 5.5, dx: slide(-2))
         }
+        .frame(width: 28, height: 28)
+        .animation(RailTiming.glide, value: hovered)
         .accessibilityHidden(true)
-        .onChange(of: hovered) { _, now in
-            if now && !reduceMotion {
-                withAnimation(.linear(duration: 9).repeatForever(autoreverses: false)) {
-                    spin += 360
-                }
-            } else {
-                withAnimation(RailTiming.glide) {
-                    spin = 0
-                }
-            }
-        }
+    }
+
+    private func slide(_ amount: CGFloat) -> CGFloat {
+        hovered && !reduceMotion ? amount : 0
+    }
+
+    private func line(dy: CGFloat, dx: CGFloat) -> some View {
+        Capsule()
+            .fill(tint)
+            .frame(width: unit * 14, height: unit * 2.4)
+            .offset(x: unit * dx, y: unit * dy) // grid: ok the offsets place the lines inside the drawn glyph's 32-unit space
     }
 }
 
@@ -192,7 +180,7 @@ private struct ClockGlyph: View {
         ZStack {
             Capsule()
                 .fill(tint)
-                .frame(width: unit * 2.2, height: unit * 13)
+                .frame(width: unit * 2.2, height: unit * 6.5)
                 .offset(y: -unit * 3.25) // grid: ok the offset places a part inside the drawn glyph's 32-unit space
         }
         .frame(width: unit * 32, height: unit * 32)
@@ -244,12 +232,16 @@ private struct ModesGlyph: View {
     }
 
     private func arc(radius: CGFloat) -> some View {
+        // The clockwise flag reads backwards in this
+        // y-down space: false is what bulges the arc away
+        // from the person, as drawn in run 1. True wraps it
+        // through the figure instead.
         GlyphPath { path in
             path.addArc(center: CGPoint(x: 22.5, y: 14.5),
                         radius: radius,
                         startAngle: .degrees(-90),
                         endAngle: .degrees(90),
-                        clockwise: true)
+                        clockwise: false)
         }
         .stroke(tint, style: StrokeStyle(lineWidth: unit * 2.2, lineCap: .round))
     }

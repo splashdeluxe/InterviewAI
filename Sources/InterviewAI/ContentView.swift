@@ -148,57 +148,54 @@ struct ContentView: View {
         .staggered(index: index)
     }
 
-    /// The foot of the rail, in Muse's pattern: one round
-    /// Settings button and the session dot side by side on a
-    /// panel step, split from the icons by one hairline. Their
-    /// words live in the hover tag, like the pages'. The corner
-    /// menu this replaces lost nothing: Keyboard Shortcuts sits
-    /// in the app menu at ⌘/, Report an Issue in About and in
-    /// the palette.
+    /// The foot of the rail: the corner menu alone on a
+    /// panel step, split from the icons by one hairline.
+    /// Its word lives in the hover tag, like the pages'.
+    /// The menu sits centred in a row, as the original
+    /// foot had it.
     private var railFoot: some View {
-        HStack(spacing: Space.sm) {
-            footSettingsButton
-            StatusDot(listening: model.session.isListening)
-                .frame(width: 20, height: 20)
-                .onHover { inside in
-                    if inside {
-                        hoveredRailID = "status"
-                    } else if hoveredRailID == "status" {
-                        hoveredRailID = nil
-                    }
-                }
+        HStack {
+            Spacer()
+            cornerMenuButton
+            Spacer()
         }
-        .frame(maxWidth: .infinity)
         .padding(.vertical, Space.md)
-        .background(Surface.panel)
-        .overlay(alignment: .top) {
-            Rectangle().fill(Surface.hairline).frame(height: 1)
-        }
+            .background(Surface.panel)
+            .overlay(alignment: .top) {
+                Rectangle().fill(Surface.hairline).frame(height: 1)
+            }
     }
 
-    /// The Settings button: a 44 pt soft circle with the drawn
-    /// gear in ink, opening Settings on click. On hover the
-    /// gear turns continuously, one slow turn every nine
-    /// seconds, the button pops to the exaggeration scale,
-    /// and the Settings tag slides out.
-    private var footSettingsButton: some View {
-        let hovered = hoveredRailID == "settings"
+    /// The corner menu, restored at Nils's word after a
+    /// round as a Muse-style settings gear beside a status
+    /// dot: he called that foot wrong, wanted the menu from
+    /// before back, and the dot gone. The button is a plain
+    /// button wearing the ink circle, and it pops a native
+    /// menu (see CornerMenu below): a SwiftUI Menu draws
+    /// its own bezel as a wide pill whatever label it is
+    /// given, through three attempted fixes, while a plain
+    /// button renders its label as drawn, like the gear
+    /// did. On hover the drawn lines stagger, the button
+    /// pops, and the Menu tag slides out. The session
+    /// state the dot carried still shows on the Live page
+    /// and in the overlay.
+    private var cornerMenuButton: some View {
+        let hovered = hoveredRailID == "menu"
         return Button {
-            openSettings()
+            CornerMenu.popUp(openSettings: { openSettings() })
         } label: {
-            GearGlyph(hovered: hovered, reduceMotion: reduceMotion, tint: Surface.ink)
+            MenuGlyph(hovered: hovered, reduceMotion: reduceMotion, tint: Surface.onInk)
                 .scaleEffect(hovered && !reduceMotion ? CGFloat(MotionSpec.exaggerationScale) : 1)
                 .frame(width: 28, height: 28)
                 .frame(width: 44, height: 44)
-                .background(Circle().fill(Surface.control))
-                .overlay(Circle().strokeBorder(Surface.controlBorder, lineWidth: 1))
+                .background(Circle().fill(Surface.ink))
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Settings")
+        .accessibilityLabel("Menu")
         .onHover { inside in
             if inside {
-                hoveredRailID = "settings"
-            } else if hoveredRailID == "settings" {
+                hoveredRailID = "menu"
+            } else if hoveredRailID == "menu" {
                 hoveredRailID = nil
             }
         }
@@ -226,36 +223,25 @@ struct ContentView: View {
         .allowsHitTesting(false)
     }
 
-    /// What the hover tag says for a rail target: a page's name,
-    /// Settings for the foot's round button, or the session state
-    /// in words, the two pieces of text the old status strip
-    /// carried.
+    /// What the hover tag says for a rail target: a page's
+    /// name, or Menu for the foot's button.
     private func railLabelText(for id: String) -> String? {
         if let page = SidebarItem(rawValue: id) { return page.title }
-        switch id {
-        case "settings":
-            return "Settings"
-        case "status":
-            let state = model.session.isListening ? "Listening" : "Idle"
-            let detail = model.session.status
-            return detail.isEmpty || detail == state ? state : "\(state) · \(detail)"
-        default:
-            return nil
-        }
+        return id == "menu" ? "Menu" : nil
     }
 
     /// Where the hover tag sits, from the rail's fixed layout: the
     /// header block is 60 (tile 36, padding 12 above and below),
     /// the icons start 8 lower, each is 52 tall with 8 between,
     /// and the foot row's centre is 34 above the rail's foot
-    /// (padding 12 plus half the 44 pt settings button).
+    /// (padding 12 plus half the 44 pt menu button).
     private func railLabelMidY(for id: String) -> CGFloat? {
         if let page = SidebarItem(rawValue: id),
            let index = SidebarItem.allCases.firstIndex(of: page) {
             return 60 + Space.sm + 26 + CGFloat(index) * 60
         }
-        guard id == "settings" || id == "status", sidebarHeight > 0 else { return nil }
-        return sidebarHeight - 34 // grid: ok 12 padding plus half the 44 pt settings button
+        guard id == "menu", sidebarHeight > 0 else { return nil }
+        return sidebarHeight - 34 // grid: ok 12 padding plus half the 44 pt menu button
     }
 
     @ViewBuilder
@@ -376,6 +362,51 @@ private enum RailMoves {
         default:
             return [.rest]
         }
+    }
+}
+
+/// The corner menu's contents, built as a native menu and
+/// popped at the pointer by the foot's button. A native
+/// menu renders correctly in both appearances and gives
+/// the shortcuts a real submenu; building it by hand is
+/// what lets the button itself stay a plain button with
+/// a drawn label.
+private enum CornerMenu {
+    static func popUp(openSettings: @escaping () -> Void) {
+        let coordinator = Coordinator.shared
+        coordinator.onSettings = openSettings
+
+        let menu = NSMenu()
+
+        let shortcutsItem = NSMenuItem(title: "Keyboard Shortcuts", action: nil, keyEquivalent: "")
+        let shortcutsMenu = NSMenu()
+        for row in ShortcutsView.rows {
+            shortcutsMenu.addItem(NSMenuItem(title: "\(row.keys) — \(row.action)", action: nil, keyEquivalent: ""))
+        }
+        shortcutsItem.submenu = shortcutsMenu
+        menu.addItem(shortcutsItem)
+
+        let reportItem = NSMenuItem(title: "Report an Issue", action: #selector(Coordinator.report), keyEquivalent: "")
+        reportItem.target = coordinator
+        menu.addItem(reportItem)
+
+        menu.addItem(.separator())
+
+        let settingsItem = NSMenuItem(title: "Settings", action: #selector(Coordinator.settings), keyEquivalent: ",")
+        settingsItem.target = coordinator
+        menu.addItem(settingsItem)
+
+        menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
+    }
+
+    /// The menu items' target: a small NSObject the
+    /// selectors can land on, held for the app's life.
+    private final class Coordinator: NSObject {
+        static let shared = Coordinator()
+        var onSettings: (() -> Void)?
+
+        @objc func settings() { onSettings?() }
+        @objc func report() { ReportIssueWindow.show() }
     }
 }
 
