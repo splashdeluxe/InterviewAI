@@ -238,12 +238,15 @@ private struct ModesGlyph: View {
         // through the figure instead. The pair sits a
         // little further from the head than run 1 had them,
         // and smaller: Nils read the first port's waves as
-        // too big and too close to the mouth.
+        // too big and too close to the mouth. And they are
+        // not half circles: the sweep stops at 58 degrees
+        // each way, so each reads as a bracket, a small
+        // one and a bigger one, as he put it.
         GlyphPath { path in
             path.addArc(center: CGPoint(x: 23.5, y: 14.5),
                         radius: radius,
-                        startAngle: .degrees(-90),
-                        endAngle: .degrees(90),
+                        startAngle: .degrees(-58),
+                        endAngle: .degrees(58),
                         clockwise: false)
         }
         .stroke(tint, style: StrokeStyle(lineWidth: unit * 2.2, lineCap: .round))
