@@ -647,6 +647,10 @@ struct MeetingsPage: View {
     @State private var questionsFailed = false
     @State private var questionTask: Task<Void, Never>? = nil
     @State private var questionProgress: (done: Int, total: Int)? = nil
+    @State private var writingScorecard = false
+    @State private var scorecardFailed = false
+    @State private var scorecardTask: Task<Void, Never>? = nil
+    @State private var scorecardProgress: (done: Int, total: Int)? = nil
     @State private var runningTransform = false
     @State private var transformFailed = false
     @State private var transformTask: Task<Void, Never>? = nil
@@ -896,6 +900,7 @@ struct MeetingsPage: View {
                     Text("Notes").tag("Notes")
                     Text("Summary").tag("Summary")
                     Text("Questions").tag("Questions")
+                    Text("Scorecard").tag("Scorecard")
                     Text("Create").tag("Create")
                 }
                 .pickerStyle(.segmented)
@@ -1022,6 +1027,72 @@ struct MeetingsPage: View {
                             }
                         }
                     }
+                case "Scorecard":
+                    VStack(alignment: .leading, spacing: Space.sm) {
+                        HStack(spacing: Space.sm) {
+                            Button {
+                                writingScorecard = true
+                                scorecardFailed = false
+                                scorecardProgress = nil
+                                scorecardTask = ScorecardWriter.write(meeting: meeting, onProgress: { done, total in
+                                    scorecardProgress = (done, total)
+                                }) { success in
+                                    writingScorecard = false
+                                    scorecardProgress = nil
+                                    scorecardTask = nil
+                                    scorecardFailed = !success
+                                }
+                            } label: {
+                                Label(writingScorecard ? (scorecardProgress.map { "Writing… \($0.done) of \($0.total)" } ?? "Writing…") : (meeting.scorecardWritten ? "Write Scorecard Again" : "Write Scorecard"), systemImage: "list.clipboard")
+                            }
+                            .buttonStyle(QuietButtonStyle())
+                            .disabled(writingScorecard || meeting.segments.isEmpty)
+                            if writingScorecard {
+                                ProgressView().controlSize(.small)
+                                Button("Cancel") {
+                                    scorecardTask?.cancel()
+                                    scorecardTask = nil
+                                    writingScorecard = false
+                                    scorecardProgress = nil
+                                }
+                                .buttonStyle(QuietButtonStyle())
+                            }
+                            Spacer()
+                        }
+                        if scorecardFailed {
+                            Text("Writing the scorecard did not finish. The transcript is unchanged.")
+                                .font(.caption)
+                                .foregroundStyle(.red)
+                        }
+                        if let card = meeting.scorecard, !card.isEmpty {
+                            ScrollView {
+                                VStack(alignment: .leading, spacing: Space.lg) {
+                                    if !card.verdict.isEmpty {
+                                        VStack(alignment: .leading, spacing: Space.xs) {
+                                            Text("The likely read")
+                                                .font(.headline)
+                                            Text(card.verdict)
+                                                .textSelection(.enabled)
+                                        }
+                                        .padding(Space.md)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .background(Surface.panel, in: RoundedRectangle(cornerRadius: Radius.card))
+                                        .overlay(RoundedRectangle(cornerRadius: Radius.card).stroke(Surface.hairline, lineWidth: 1))
+                                    }
+                                    scorecardSection("What they probed", points: card.probed, hasAudio: hasAudio)
+                                    scorecardSection("Evidence you gave", points: card.evidence, hasAudio: hasAudio)
+                                    scorecardSection("Where you were thin", points: card.gaps, hasAudio: hasAudio)
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                        } else {
+                            Text(meeting.scorecardWritten
+                                 ? "No scorecard could be written from this transcript."
+                                 : "The scorecard the other side would file on you after this call: what they probed, the evidence you gave, and where you were thin. Writing it runs on this Mac and can take a few minutes on a long call.")
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                 case "Create":
                     createTab(meeting: meeting)
                 default:
@@ -1142,6 +1213,41 @@ struct MeetingsPage: View {
     /// The saved transform favorites, shared across meetings.
     private var transformFavorites: [TransformFavorite] {
         TransformFavorite.decode(transformFavoritesJSON)
+    }
+
+    /// One scorecard section: a heading and its points, each with
+    /// the moment it rests on, tappable to hear that moment when
+    /// the session audio is saved, like the Questions rows.
+    @ViewBuilder
+    private func scorecardSection(_ title: String, points: [ScorecardPoint], hasAudio: Bool) -> some View {
+        if !points.isEmpty {
+            VStack(alignment: .leading, spacing: Space.sm) {
+                Text(title).font(.headline)
+                ForEach(Array(points.enumerated()), id: \.offset) { _, point in
+                    HStack(alignment: .top, spacing: Space.sm) {
+                        if hasAudio {
+                            Button {
+                                seekRequest = max(0, point.atSeconds - 2)
+                            } label: {
+                                Text(TranscriptTime.label(seconds: point.atSeconds))
+                                    .font(.caption.monospacedDigit())
+                                    .frame(width: 48, alignment: .trailing)
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(.secondary)
+                            .help("Play from just before this moment")
+                        } else {
+                            Text(TranscriptTime.label(seconds: point.atSeconds))
+                                .font(.caption.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                                .frame(width: 48, alignment: .trailing)
+                        }
+                        Text(point.text)
+                            .textSelection(.enabled)
+                    }
+                }
+            }
+        }
     }
 
     /// Turn this meeting into something else: a brief summary, a

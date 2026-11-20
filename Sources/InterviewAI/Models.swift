@@ -44,6 +44,15 @@ final class Meeting {
     /// Find Questions has completed a run on this meeting, so an
     /// empty list means "looked, none found", not "never looked".
     var questionsExtracted: Bool = false
+    /// The scorecard the other side would plausibly file on the
+    /// user after this call, JSON-encoded InterviewScorecard,
+    /// written by Write Scorecard from the transcript. Empty until
+    /// a run writes one.
+    var scorecardJSON: String = ""
+    /// Write Scorecard has completed a run on this meeting, so a
+    /// missing card means "looked, nothing to file", not "never
+    /// looked".
+    var scorecardWritten: Bool = false
     /// What the Create tab made from this meeting, JSON-encoded
     /// [TransformResult]: a brief summary, a thank-you email, study
     /// questions, a translation, and the rest. Running a transform
@@ -72,6 +81,7 @@ final class Meeting {
     var cleanedSegments: [TranscriptSegment] { TranscriptSegment.decode(cleanedTranscriptJSON) }
     var hasCleanedTranscript: Bool { !cleanedSegments.isEmpty }
     var questionPairs: [QuestionPair] { QuestionPair.decode(questionsJSON) }
+    var scorecard: InterviewScorecard? { InterviewScorecard.decode(scorecardJSON) }
     var transformResults: [TransformResult] { TransformResult.decode(transformsJSON) }
 }
 
