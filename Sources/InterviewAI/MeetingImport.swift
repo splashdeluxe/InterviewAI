@@ -253,10 +253,22 @@ enum FileTranscriber {
     }
 
     /// The file itself when AVAudioFile can read it (the audio
-    /// formats), otherwise an exported audio-only copy (the video
-    /// formats), written to the temporary folder.
+    /// formats), an ffmpeg decode when it is an Ogg voice message
+    /// AVFoundation cannot open, otherwise an exported audio-only
+    /// copy (the video formats), written to the temporary folder.
     private static func readableAudioURL(for url: URL) async throws -> URL {
         if (try? AVAudioFile(forReading: url)) != nil { return url }
+        // AVFoundation did not open it. Voice messages from
+        // WhatsApp and Telegram are Ogg files, which macOS may not
+        // open at all; those go through ffmpeg when it is
+        // installed, before the video export below gets its turn.
+        if sniffedKind(of: url).needsFFmpegFallback {
+            if let decoded = await decodeWithFFmpeg(for: url) { return decoded }
+            if ffmpegPath != nil {
+                throw ImportError.message("This voice message could not be decoded on this Mac. Converting the file to MP3 or WAV and importing that will work.")
+            }
+            throw ImportError.message("This voice message cannot be read on this Mac. macOS could not open it, and the ffmpeg tool that decodes voice messages was not found. Converting the file to MP3 or WAV and importing that will work.")
+        }
         let asset = AVURLAsset(url: url)
         guard let session = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetAppleM4A) else {
             throw ImportError.message("That file cannot be read as audio or video.")
@@ -270,6 +282,48 @@ enum FileTranscriber {
         guard session.status == .completed else {
             throw ImportError.message("That video's audio could not be extracted. \(session.error?.localizedDescription ?? "")")
         }
+        return out
+    }
+
+    /// What kind of file this is, from its first bytes when they
+    /// can be read and from its name when they cannot.
+    private static func sniffedKind(of url: URL) -> AudioFileKind {
+        var header: [UInt8] = []
+        if let handle = try? FileHandle(forReadingFrom: url) {
+            header = [UInt8](handle.readData(ofLength: 64))
+            try? handle.close()
+        }
+        let byHeader = AudioFileKind.detect(header: header)
+        return byHeader == .unknown ? AudioFileKind.detect(pathExtension: url.pathExtension) : byHeader
+    }
+
+    /// An ffmpeg installed with Homebrew, when there is one.
+    private static var ffmpegPath: String? {
+        ["/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg"]
+            .first { FileManager.default.fileExists(atPath: $0) }
+    }
+
+    /// Decode a file AVFoundation cannot open (an Ogg voice
+    /// message, in practice) to a 16 kHz mono WAV in the temporary
+    /// folder, using an ffmpeg installed with Homebrew. Nil when
+    /// there is no ffmpeg, or when it cannot decode the file.
+    private static func decodeWithFFmpeg(for url: URL) async -> URL? {
+        guard let ffmpeg = ffmpegPath else { return nil }
+        let out = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".wav")
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: ffmpeg)
+        process.arguments = ["-hide_banner", "-loglevel", "error", "-y", "-i", url.path, "-ar", "16000", "-ac", "1", out.path]
+        let finished: Bool = await withCheckedContinuation { continuation in
+            process.terminationHandler = { _ in continuation.resume(returning: true) }
+            do {
+                try process.run()
+            } catch {
+                process.terminationHandler = nil
+                continuation.resume(returning: false)
+            }
+        }
+        let size = (try? FileManager.default.attributesOfItem(atPath: out.path))?[.size] as? Int ?? 0
+        guard finished, process.terminationStatus == 0, size > 0 else { return nil }
         return out
     }
 
@@ -435,12 +489,24 @@ struct ImportMeetingSheet: View {
         }
     }
 
+    /// Files handed in from outside the sheet — dropped on the
+    /// Meetings list, in practice. They open the sheet on the file
+    /// route with the batch already chosen.
+    init(initialFiles: [URL] = []) {
+        _kind = State(initialValue: initialFiles.isEmpty ? .transcript : .file)
+        _fileURLs = State(initialValue: initialFiles)
+        _title = State(initialValue: initialFiles.count == 1
+            ? initialFiles[0].deletingPathExtension().lastPathComponent
+            : "")
+    }
+
     @State private var kind: Kind = .transcript
     @State private var title = ""
     @State private var modeID = "general"
     @State private var speakerName = ""
     @State private var pasteText = ""
-    @State private var fileURL: URL?
+    @State private var fileURLs: [URL] = []
+    @State private var batchFailures: [String] = []
     @State private var linkText = ""
     @State private var showFilePicker = false
     @State private var working = false
@@ -494,18 +560,22 @@ struct ImportMeetingSheet: View {
                     .foregroundStyle(.secondary)
             case .file:
                 HStack(spacing: Space.sm) {
-                    Button(fileURL == nil ? "Choose Audio or Video File…" : "Choose a Different File…") {
+                    Button(fileURLs.isEmpty ? "Choose Audio or Video Files…" : "Choose Different Files…") {
                         showFilePicker = true
                     }
                     .buttonStyle(QuietButtonStyle())
                     .disabled(working)
-                    if let fileURL {
-                        Text(fileURL.lastPathComponent)
+                    if fileURLs.count == 1, let only = fileURLs.first {
+                        Text(only.lastPathComponent)
+                            .font(.callout)
+                            .lineLimit(1)
+                    } else if fileURLs.count > 1 {
+                        Text("\(fileURLs.count) files chosen")
                             .font(.callout)
                             .lineLimit(1)
                     }
                 }
-                Text("MP3, WAV, M4A, and other audio files, or MP4 and MOV video. The file is transcribed on this Mac with the speech engine from Settings, and the audio stays attached to the meeting for playback.")
+                Text("MP3, WAV, M4A and other audio files, or MP4 and MOV video. Voice messages from WhatsApp and Telegram work too. Each file is transcribed on this Mac with the speech engine from Settings, and its audio stays attached to the meeting for playback.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             case .link:
@@ -561,6 +631,18 @@ struct ImportMeetingSheet: View {
                     .font(.caption)
                     .foregroundStyle(.red)
             }
+            if !batchFailures.isEmpty {
+                VStack(alignment: .leading, spacing: Space.xs) {
+                    Text("Some files could not be imported:")
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                    ForEach(Array(batchFailures.enumerated()), id: \.offset) { _, failure in
+                        Text(failure)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    }
+                }
+            }
 
             HStack(spacing: Space.sm) {
                 if working {
@@ -588,16 +670,29 @@ struct ImportMeetingSheet: View {
         .background(Surface.canvas)
         .fileImporter(
             isPresented: $showFilePicker,
-            allowedContentTypes: [.audio, .movie, .video, .mp3, .wav, .mpeg4Audio, .quickTimeMovie, .mpeg4Movie],
-            allowsMultipleSelection: false
+            allowedContentTypes: Self.importContentTypes,
+            allowsMultipleSelection: true
         ) { result in
-            if let url = try? result.get().first {
-                fileURL = url
-                if title.isEmpty {
+            if let urls = try? result.get() {
+                fileURLs = urls
+                if title.isEmpty, urls.count == 1, let url = urls.first {
                     title = url.deletingPathExtension().lastPathComponent
                 }
             }
         }
+    }
+
+    /// The file types the picker offers: the audio and video
+    /// types, plus the Ogg family (WhatsApp and Telegram voice
+    /// notes), whose types are looked up by extension because
+    /// Uniform Type Identifiers has no constant for them.
+    private static var importContentTypes: [UTType] {
+        var types: [UTType] = [.audio, .movie, .video, .mp3, .wav, .mpeg4Audio, .quickTimeMovie, .mpeg4Movie]
+        for ext in ["ogg", "opus", "oga"] {
+            let type: UTType? = UTType(filenameExtension: ext)
+            if let type { types.append(type) }
+        }
+        return types
     }
 
     private var linkHint: String {
@@ -620,7 +715,7 @@ struct ImportMeetingSheet: View {
         case .transcript:
             return !pasteText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         case .file:
-            return fileURL != nil
+            return !fileURLs.isEmpty
         case .link:
             if case .unsupported = ImportSource.classify(linkText).kind { return false }
             return !linkText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -631,6 +726,7 @@ struct ImportMeetingSheet: View {
 
     private func runImport() {
         errorText = nil
+        batchFailures = []
         working = true
         progress = nil
         statusText = "Starting…"
@@ -641,7 +737,12 @@ struct ImportMeetingSheet: View {
                 case .file: try await importFile()
                 case .link: try await importLink()
                 }
-                dismiss()
+                // A file batch that left failures behind keeps the
+                // sheet open so they can be read; every other route,
+                // and a clean batch, dismisses as before.
+                if batchFailures.isEmpty {
+                    dismiss()
+                }
             } catch is CancellationError {
                 statusText = ""
             } catch {
@@ -671,12 +772,31 @@ struct ImportMeetingSheet: View {
         )
     }
 
+    /// Every chosen file, in order, one meeting each. A file that
+    /// fails is noted in `batchFailures` and the batch carries on;
+    /// cancelling between files stops the whole import.
     private func importFile() async throws {
-        guard let fileURL else { return }
-        let scoped = fileURL.startAccessingSecurityScopedResource()
-        defer { if scoped { fileURL.stopAccessingSecurityScopedResource() } }
-        let startedAt = (try? FileManager.default.attributesOfItem(atPath: fileURL.path))?[.modificationDate] as? Date ?? Date.now
-        try await transcribeIntoMeeting(url: fileURL, startedAt: startedAt, fallbackTitle: fileURL.deletingPathExtension().lastPathComponent)
+        let total = fileURLs.count
+        for (index, fileURL) in fileURLs.enumerated() {
+            if Task.isCancelled { throw CancellationError() }
+            let scoped = fileURL.startAccessingSecurityScopedResource()
+            let startedAt = (try? FileManager.default.attributesOfItem(atPath: fileURL.path))?[.modificationDate] as? Date ?? Date.now
+            do {
+                try await transcribeIntoMeeting(
+                    url: fileURL,
+                    startedAt: startedAt,
+                    fallbackTitle: fileURL.deletingPathExtension().lastPathComponent,
+                    meetingTitle: total == 1 ? title : "",
+                    statusPrefix: total > 1 ? "File \(index + 1) of \(total) — " : ""
+                )
+            } catch is CancellationError {
+                if scoped { fileURL.stopAccessingSecurityScopedResource() }
+                throw CancellationError()
+            } catch {
+                batchFailures.append("\(fileURL.lastPathComponent) — \(error.localizedDescription)")
+            }
+            if scoped { fileURL.stopAccessingSecurityScopedResource() }
+        }
     }
 
     private func importLink() async throws {
@@ -706,7 +826,7 @@ struct ImportMeetingSheet: View {
             let local = FileManager.default.temporaryDirectory
                 .appendingPathComponent(UUID().uuidString + "." + (url.pathExtension.isEmpty ? "mp3" : url.pathExtension))
             try FileManager.default.moveItem(at: tempURL, to: local)
-            try await transcribeIntoMeeting(url: local, startedAt: Date.now, fallbackTitle: url.deletingPathExtension().lastPathComponent)
+            try await transcribeIntoMeeting(url: local, startedAt: Date.now, fallbackTitle: url.deletingPathExtension().lastPathComponent, meetingTitle: title)
         case .unsupported:
             throw ImportError.message("That link is not supported. Use a YouTube link or a direct audio or video file link, or download the file and import it instead.")
         }
@@ -714,12 +834,15 @@ struct ImportMeetingSheet: View {
 
     /// The shared tail of the file and direct-link routes: transcribe,
     /// attach the audio, save the meeting, then diarize for speakers.
-    private func transcribeIntoMeeting(url: URL, startedAt: Date, fallbackTitle: String) async throws {
-        statusText = "Transcribing on this Mac…"
+    /// `meetingTitle` is the title typed in the sheet (empty means
+    /// the fallback names the meeting); `statusPrefix` marks this
+    /// file's place in a batch, like "File 2 of 4 — ".
+    private func transcribeIntoMeeting(url: URL, startedAt: Date, fallbackTitle: String, meetingTitle: String, statusPrefix: String = "") async throws {
+        statusText = statusPrefix + "Transcribing on this Mac…"
         let result = try await FileTranscriber.transcribe(url: url) { value in
             Task { @MainActor in self.progress = value }
         }
-        statusText = "Saving the meeting…"
+        statusText = statusPrefix + "Saving the meeting…"
         let audioName = result.playbackURL.map { MeetingImporter.storeAudio(from: $0) } ?? ""
         let speaker = speakerName.trimmingCharacters(in: .whitespacesAndNewlines)
         var segments = result.segments
@@ -730,7 +853,7 @@ struct ImportMeetingSheet: View {
         }
         let meeting = MeetingImporter.createMeeting(
             model: model,
-            title: title.isEmpty ? fallbackTitle : title,
+            title: meetingTitle.isEmpty ? fallbackTitle : meetingTitle,
             modeID: modeID,
             segments: segments,
             startedAt: startedAt,
