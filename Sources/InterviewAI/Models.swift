@@ -44,6 +44,12 @@ final class Meeting {
     /// Find Questions has completed a run on this meeting, so an
     /// empty list means "looked, none found", not "never looked".
     var questionsExtracted: Bool = false
+    /// What the Create tab made from this meeting, JSON-encoded
+    /// [TransformResult]: a brief summary, a thank-you email, study
+    /// questions, a translation, and the rest. Running a transform
+    /// adds a result; it never overwrites the summary, the
+    /// follow-up, or an older result. Empty until one runs.
+    var transformsJSON: String = ""
     /// Why speaker labels are missing or partial on this meeting, in
     /// plain words (see DiarizationNotes). Empty when separation
     /// worked or was never attempted.
@@ -66,6 +72,7 @@ final class Meeting {
     var cleanedSegments: [TranscriptSegment] { TranscriptSegment.decode(cleanedTranscriptJSON) }
     var hasCleanedTranscript: Bool { !cleanedSegments.isEmpty }
     var questionPairs: [QuestionPair] { QuestionPair.decode(questionsJSON) }
+    var transformResults: [TransformResult] { TransformResult.decode(transformsJSON) }
 }
 
 @Model

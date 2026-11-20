@@ -623,6 +623,12 @@ struct MeetingsPage: View {
     @State private var questionsFailed = false
     @State private var questionTask: Task<Void, Never>? = nil
     @State private var questionProgress: (done: Int, total: Int)? = nil
+    @State private var runningTransform = false
+    @State private var transformFailed = false
+    @State private var transformTask: Task<Void, Never>? = nil
+    @State private var customTransformName = ""
+    @State private var customTransformPrompt = ""
+    @AppStorage("transforms.favoritesJSON") private var transformFavoritesJSON = ""
     @State private var regenerating = false
     @State private var seekRequest: Double? = nil
     @AppStorage("reading.transcriptFontSize") private var transcriptFontSize = 14.0
@@ -849,6 +855,7 @@ struct MeetingsPage: View {
                     Text("Notes").tag("Notes")
                     Text("Summary").tag("Summary")
                     Text("Questions").tag("Questions")
+                    Text("Create").tag("Create")
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
@@ -974,6 +981,8 @@ struct MeetingsPage: View {
                             }
                         }
                     }
+                case "Create":
+                    createTab(meeting: meeting)
                 default:
                     VStack(alignment: .leading, spacing: Space.sm) {
                         HStack(spacing: Space.sm) {
@@ -1074,10 +1083,255 @@ struct MeetingsPage: View {
                 showCleaned = false
                 cleanFailed = false
                 questionsFailed = false
+                transformFailed = false
             }
         } else {
             ContentUnavailableView("No Meeting Selected", systemImage: "sidebar.right")
         }
+    }
+
+    // MARK: Create tab
+
+    /// The saved transform favorites, shared across meetings.
+    private var transformFavorites: [TransformFavorite] {
+        TransformFavorite.decode(transformFavoritesJSON)
+    }
+
+    /// Turn this meeting into something else: a brief summary, a
+    /// thank-you email, study questions, a translation, or the
+    /// user's own prompt. Everything runs on this Mac through the
+    /// Deep model, and every result is saved on the meeting.
+    @ViewBuilder
+    private func createTab(meeting: Meeting) -> some View {
+        let picked = TransformSourcePicker.pick(cleaned: meeting.cleanedSegments, original: meeting.segments)
+        ScrollView {
+            VStack(alignment: .leading, spacing: Space.lg) {
+                VStack(alignment: .leading, spacing: Space.sm) {
+                    if let picked {
+                        Text("Reading: \(picked.source.label). Transforms run on this Mac, and the results stay on this meeting.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Text("This meeting has no transcript yet, so there is nothing to work from.")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                    }
+                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], alignment: .leading, spacing: Space.sm) {
+                        ForEach(BuiltInTransforms.all, id: \.id) { definition in
+                            Button {
+                                startTranscriptTransform(meeting: meeting, definition: definition)
+                            } label: {
+                                Text(definition.name)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                            .buttonStyle(QuietButtonStyle())
+                            .disabled(runningTransform || picked == nil)
+                        }
+                    }
+                    HStack(spacing: Space.sm) {
+                        Menu {
+                            ForEach(TranslationPrompts.languages, id: \.self) { language in
+                                Button(language) {
+                                    startSummaryTransform(meeting: meeting, definition: BuiltInTransforms.translate(language: language))
+                                }
+                            }
+                        } label: {
+                            Label("Translate Summary", systemImage: "character.bubble")
+                        }
+                        .menuStyle(.borderlessButton)
+                        .disabled(runningTransform || meeting.summary.isEmpty)
+                        Menu {
+                            ForEach(BuiltInTransforms.tones, id: \.self) { tone in
+                                Button(tone) {
+                                    startSummaryTransform(meeting: meeting, definition: BuiltInTransforms.toneRewrite(tone: tone))
+                                }
+                            }
+                        } label: {
+                            Label("Rewrite Summary", systemImage: "textformat")
+                        }
+                        .menuStyle(.borderlessButton)
+                        .disabled(runningTransform || meeting.summary.isEmpty)
+                        Spacer()
+                    }
+                    if meeting.summary.isEmpty {
+                        Text("Translate and Rewrite work on the summary. This meeting has no summary yet.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    if runningTransform {
+                        HStack(spacing: Space.sm) {
+                            ProgressView().controlSize(.small)
+                            Text("Writing…")
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                            Button("Cancel") {
+                                transformTask?.cancel()
+                                transformTask = nil
+                                runningTransform = false
+                            }
+                            .buttonStyle(QuietButtonStyle())
+                        }
+                    }
+                    if transformFailed {
+                        Text("That did not finish. Nothing was saved.")
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: Space.sm) {
+                    Text("Your Own Prompt")
+                        .font(.headline)
+                    TextField("Name (optional)", text: $customTransformName)
+                        .textFieldStyle(.roundedBorder)
+                        .disabled(runningTransform)
+                    TextField("What should it do? For example: Turn this into a short post I can share.", text: $customTransformPrompt, axis: .vertical)
+                        .textFieldStyle(.roundedBorder)
+                        .lineLimit(2...5)
+                        .disabled(runningTransform)
+                    HStack(spacing: Space.sm) {
+                        Button("Run") {
+                            runCustomTransform(meeting: meeting)
+                        }
+                        .buttonStyle(InkButtonStyle())
+                        .disabled(runningTransform || picked == nil || customTransformPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        Button("Save as Favorite") {
+                            saveCustomFavorite()
+                        }
+                        .buttonStyle(QuietButtonStyle())
+                        .disabled(customTransformPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        Spacer()
+                    }
+                    Text("A custom prompt reads the same transcript as the transforms above. Save one as a favorite and it is offered on every meeting.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                if !transformFavorites.isEmpty {
+                    VStack(alignment: .leading, spacing: Space.sm) {
+                        Text("Favorites")
+                            .font(.headline)
+                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], alignment: .leading, spacing: Space.sm) {
+                            ForEach(transformFavorites) { favorite in
+                                Button {
+                                    startTranscriptTransform(meeting: meeting, definition: TransformDefinition(id: "favorite-\(favorite.id)", name: favorite.name, instruction: favorite.prompt))
+                                } label: {
+                                    Text(favorite.name)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                }
+                                .buttonStyle(QuietButtonStyle())
+                                .disabled(runningTransform || picked == nil)
+                                .contextMenu {
+                                    Button("Delete", role: .destructive) {
+                                        deleteTransformFavorite(favorite)
+                                    }
+                                }
+                            }
+                        }
+                        Text("Right-click a favorite to delete it.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: Space.md) {
+                    if meeting.transformResults.isEmpty {
+                        Text("Nothing made yet. Pick a transform above and the result will be saved here, on this meeting, next to the summary.")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(meeting.transformResults.reversed()) { result in
+                            VStack(alignment: .leading, spacing: Space.sm) {
+                                HStack(alignment: .firstTextBaseline, spacing: Space.sm) {
+                                    Text(result.name)
+                                        .font(.headline)
+                                    Spacer()
+                                    Text(result.createdAt.formatted(date: .abbreviated, time: .shortened))
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Text("Source: \(result.source.label)")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                DocTextView(text: result.text)
+                                HStack(spacing: Space.sm) {
+                                    Button("Copy") {
+                                        copyText(result.text)
+                                    }
+                                    .buttonStyle(QuietButtonStyle())
+                                    Button("Export…") {
+                                        saveTextFile(
+                                            transformMarkdown(meeting: meeting, result: result),
+                                            fileName: TranscriptExport.fileName(title: "\(meeting.title) \(result.name)", date: result.createdAt)
+                                        )
+                                    }
+                                    .buttonStyle(QuietButtonStyle())
+                                    Spacer()
+                                }
+                            }
+                            .padding(Space.md)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Surface.panel, in: RoundedRectangle(cornerRadius: Radius.card))
+                            .overlay(RoundedRectangle(cornerRadius: Radius.card).stroke(Surface.hairline, lineWidth: 1))
+                        }
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    /// Start a transform, the Create tab's one running state: one
+    /// job at a time, and a failure shows its line and saves nothing.
+    private func startTransform(meeting: Meeting, definition: TransformDefinition, inputText: String, inputLabel: String, source: TransformSource) {
+        transformFailed = false
+        runningTransform = true
+        transformTask = MeetingTransforms.run(meeting: meeting, definition: definition, inputText: inputText, inputLabel: inputLabel, source: source) { success in
+            runningTransform = false
+            transformTask = nil
+            transformFailed = !success
+        }
+    }
+
+    /// A transform that reads the meeting's transcript: the Clean
+    /// Transcript when there is one, the original otherwise.
+    private func startTranscriptTransform(meeting: Meeting, definition: TransformDefinition) {
+        guard let picked = TransformSourcePicker.pick(cleaned: meeting.cleanedSegments, original: meeting.segments) else { return }
+        startTransform(meeting: meeting, definition: definition, inputText: TranscriptSegment.plainText(picked.segments), inputLabel: picked.source.label, source: picked.source)
+    }
+
+    /// A transform that reads the meeting's summary: Translate and
+    /// the tone rewrites. The result is stamped with the original
+    /// source, because TransformSource names transcripts only; the
+    /// prompt itself is told the text is the summary.
+    private func startSummaryTransform(meeting: Meeting, definition: TransformDefinition) {
+        guard !meeting.summary.isEmpty else { return }
+        startTransform(meeting: meeting, definition: definition, inputText: meeting.summary, inputLabel: "Summary", source: .summary)
+    }
+
+    private func runCustomTransform(meeting: Meeting) {
+        let prompt = customTransformPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !prompt.isEmpty else { return }
+        let name = customTransformName.trimmingCharacters(in: .whitespacesAndNewlines)
+        startTranscriptTransform(meeting: meeting, definition: TransformDefinition(id: "custom", name: name.isEmpty ? "Custom" : name, instruction: prompt))
+    }
+
+    private func saveCustomFavorite() {
+        let prompt = customTransformPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !prompt.isEmpty else { return }
+        let name = customTransformName.trimmingCharacters(in: .whitespacesAndNewlines)
+        var favorites = transformFavorites
+        favorites.append(TransformFavorite(name: name.isEmpty ? "Custom Prompt" : name, prompt: prompt))
+        transformFavoritesJSON = TransformFavorite.encode(favorites)
+    }
+
+    private func deleteTransformFavorite(_ favorite: TransformFavorite) {
+        transformFavoritesJSON = TransformFavorite.encode(transformFavorites.filter { $0.id != favorite.id })
+    }
+
+    /// One saved result as a Markdown file the user keeps.
+    private func transformMarkdown(meeting: Meeting, result: TransformResult) -> String {
+        "# \(result.name)\n\nMeeting: \(meeting.title)\nMade: \(result.createdAt.formatted(date: .complete, time: .shortened))\nWritten from: \(result.source.label)\n\n\(result.text)\n"
     }
 }
 
