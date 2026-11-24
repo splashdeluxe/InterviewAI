@@ -72,6 +72,18 @@ final class LiveSession {
     /// is attached to the saved meeting at stop.
     @ObservationIgnored private var recorder: SessionAudioRecorder?
     @ObservationIgnored private var pendingAudioName: String?
+    /// The held end of a tiny session: it stopped, but whether
+    /// it is saved waits on the mistake prompt. `endResolution`
+    /// is true for Keep, false for Discard, nil while the
+    /// answer is still open; the recording's half of the
+    /// answer lands separately in `endAudioOK`.
+    @ObservationIgnored private var endDecisionPending = false
+    @ObservationIgnored private var endResolution: Bool?
+    @ObservationIgnored private var endAudioOK: Bool?
+    @ObservationIgnored private var endAudioName: String?
+    @ObservationIgnored private var endAudioFailure = ""
+    @ObservationIgnored private var endAudioWasRequested = false
+    @ObservationIgnored private var keptMeeting: Meeting?
     @ObservationIgnored private var audioWasRequested = false
     var audioRecordingActive = false
     /// Automatic Suggestions (Hedy plan, phase 2): proactive tips the
@@ -121,6 +133,7 @@ final class LiveSession {
         if isListening {
             stop()
         } else {
+            keepPendingEndIfNeeded()
             // A plain start (hotkey, menu) carries no setup choices:
             // clear whatever a previous planned start left behind.
             linkedEvent = nil
@@ -135,6 +148,7 @@ final class LiveSession {
     /// Start listening for a calendar event: the meeting takes the
     /// event's title, and the event link is saved with it.
     func start(event: UpcomingEvent) {
+        keepPendingEndIfNeeded()
         linkedEvent = event
         sessionContext = ""
         eventDeclined = false
@@ -148,6 +162,7 @@ final class LiveSession {
     /// confirmed (or none, for a call that is not an appointment), the
     /// context line they typed, and this session's Save Audio choice.
     func startPlanned(event: UpcomingEvent?, context: String, saveAudio: Bool, talkingWith: String = "") {
+        keepPendingEndIfNeeded()
         linkedEvent = event
         eventDeclined = event == nil
         sessionContext = context.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -167,6 +182,7 @@ final class LiveSession {
 
     func start() {
         guard !isListening else { return }
+        keepPendingEndIfNeeded()
         finalSegments = []
         partials = [:]
         answer = ""
@@ -283,7 +299,12 @@ final class LiveSession {
         status = "Session deleted. Nothing was saved."
     }
 
-    func stop() {
+    /// End the session. A session that captured only a few
+    /// words first asks whether it was started by mistake
+    /// (see `beginPendingEnd`); the quit flow passes
+    /// `askingWhenTiny: false`, because its End choice has
+    /// already settled the question.
+    func stop(askingWhenTiny: Bool = true) {
         guard isListening else { return }
         isListening = false
         // Ending from a pause: the clock already excludes the open
@@ -301,6 +322,13 @@ final class LiveSession {
         pendingAudioName = nil
         audioWasRequested = false
         audioRecordingActive = false
+        if askingWhenTiny, model != nil {
+            let words = SessionEnd.wordCount(finalSegments)
+            if SessionEnd.looksLikeMistake(wordCount: words) {
+                beginPendingEnd(words: words, recorder: activeRecorder, audioName: audioName, wasRequested: wasRequested)
+                return
+            }
+        }
         var saved: Meeting?
         if let model, !finalSegments.isEmpty {
             saved = model.saveMeeting(from: self)
@@ -338,6 +366,126 @@ final class LiveSession {
                     }
                 }
             }
+        }
+    }
+
+    /// Hold a tiny stopped session open for its Keep or
+    /// Discard answer: the clock freezes as a pause, so the
+    /// wait is not counted in the meeting's duration, the
+    /// recording is finalised but neither attached nor
+    /// deleted, and the prompt window asks. Nothing is saved
+    /// and nothing is thrown away until the answer lands.
+    private func beginPendingEnd(words: Int, recorder activeRecorder: SessionAudioRecorder?, audioName: String?, wasRequested: Bool) {
+        endDecisionPending = true
+        endResolution = nil
+        endAudioOK = nil
+        endAudioFailure = ""
+        endAudioName = audioName
+        endAudioWasRequested = wasRequested
+        keptMeeting = nil
+        clock?.beginPause(at: Date.now)
+        if let activeRecorder, let audioName {
+            activeRecorder.stop { [weak self] ok in
+                DispatchQueue.main.async {
+                    self?.endAudioOK = ok
+                    self?.endAudioFailure = activeRecorder.failureSummary
+                    self?.resolvePendingEnd()
+                }
+            }
+        } else {
+            endAudioOK = false
+        }
+        DispatchQueue.main.async {
+            MistakePromptWindow.show(session: self, wordCount: words)
+        }
+    }
+
+    /// Starting again settles a held session as Keep: a new
+    /// recording never throws the previous one away
+    /// unanswered. Called at the top of every start entry
+    /// point, before it touches the held session's fields.
+    private func keepPendingEndIfNeeded() {
+        guard endDecisionPending, endResolution == nil else { return }
+        keepPendingEnd()
+    }
+
+    /// The prompt's Keep: save the held session exactly as a
+    /// plain stop would have, then let the audio land.
+    func keepPendingEnd() {
+        guard endDecisionPending, endResolution == nil else { return }
+        endResolution = true
+        MistakePromptWindow.dismiss()
+        if let model, !finalSegments.isEmpty {
+            let saved = model.saveMeeting(from: self)
+            keptMeeting = saved
+            if !suggestions.isEmpty {
+                saved.suggestionsJSON = Suggestion.encode(suggestions)
+                try? saved.modelContext?.save()
+            }
+            summarize(meeting: saved)
+            diarize(meeting: saved)
+        }
+        linkedEvent = nil
+        resolvePendingEnd()
+    }
+
+    /// The prompt's Discard: throw the held session away, the
+    /// same clearing `discard()` does, minus the capture stop
+    /// (capture already stopped when the session ended).
+    func discardPendingEnd() {
+        guard endDecisionPending, endResolution == nil else { return }
+        endResolution = false
+        MistakePromptWindow.dismiss()
+        clock = nil
+        answerTask?.cancel()
+        finalSegments = []
+        partials = [:]
+        suggestions = []
+        currentSuggestion = nil
+        answer = ""
+        answerError = nil
+        otherSideWarning = nil
+        linkedEvent = nil
+        startedAt = nil
+        status = "Session deleted. Nothing was saved."
+        resolvePendingEnd()
+    }
+
+    /// Land the held session's audio once both halves of the
+    /// answer exist: the Keep or Discard choice and the
+    /// finished recording. Runs exactly once; the held state
+    /// clears as it goes.
+    private func resolvePendingEnd() {
+        guard endDecisionPending, let keep = endResolution, let ok = endAudioOK else { return }
+        endDecisionPending = false
+        endResolution = nil
+        endAudioOK = nil
+        let name = endAudioName
+        let wasRequested = endAudioWasRequested
+        let failure = endAudioFailure
+        endAudioName = nil
+        endAudioWasRequested = false
+        endAudioFailure = ""
+        let saved = keptMeeting
+        keptMeeting = nil
+        guard keep else {
+            if let name { SessionAudioStore.delete(fileName: name) }
+            return
+        }
+        if let name {
+            if ok, let saved {
+                saved.audioFileName = name
+                try? saved.modelContext?.save()
+            } else {
+                SessionAudioStore.delete(fileName: name)
+                if saved != nil {
+                    status = failure.isEmpty
+                        ? "Session saved. The audio recording failed, but the transcript is complete."
+                        : "Session saved. The audio recording failed (\(failure)), but the transcript is complete."
+                }
+            }
+        } else if wasRequested, saved != nil {
+            status = "Session saved. Audio recording could not start, but the transcript is complete."
         }
     }
 

@@ -86,7 +86,7 @@ struct SessionControlsView: View {
                 // list — so the choice the session is remembered
                 // by is the one that stands out.
                 Button {
-                    session.stop()
+                    session.stop(askingWhenTiny: !quitMode)
                     onOutcome(true)
                 } label: {
                     Label(quitMode ? "End Session and Quit" : "End Session", systemImage: "stop.circle")
