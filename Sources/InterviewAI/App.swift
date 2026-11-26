@@ -185,7 +185,7 @@ enum Store {
     static func makeContainer() -> ModelContainer {
         do {
             return try ModelContainer(
-                for: Meeting.self, ContextFile.self, CustomMode.self, IntelligenceDoc.self,
+                for: Meeting.self, ContextFile.self, CustomMode.self, IntelligenceDoc.self, ChatThread.self,
                 configurations: ModelConfiguration(url: url)
             )
         } catch {

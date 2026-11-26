@@ -172,6 +172,25 @@ final class IntelligenceDoc {
     }
 }
 
+/// One Ask conversation: a titled thread of questions and
+/// answers about the meetings and files, kept so a chat can
+/// be picked up again from Past chats.
+@Model
+final class ChatThread {
+    var title: String = ""
+    var createdAt: Date = Date.now
+    var updatedAt: Date = Date.now
+    /// ChatMessage list as JSON, see ChatMessage.encode.
+    var messagesJSON: String = "[]"
+    var uuid: UUID = UUID()
+
+    init(title: String) {
+        self.title = title
+    }
+
+    var messages: [ChatMessage] { ChatMessage.decode(messagesJSON) }
+}
+
 /// The sidebar pages. Snapshot mode walks through every case.
 enum SidebarItem: String, CaseIterable, Identifiable {
     case live, meetings, modes, context, intelligence, ask

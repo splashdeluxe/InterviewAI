@@ -238,7 +238,7 @@ struct ContentView: View {
         case .modes: ModesPage()
         case .context: ContextPage()
         case .intelligence: IntelligencePage()
-        case .ask: AskPage()
+        case .ask: ChatPage()
         }
     }
 }

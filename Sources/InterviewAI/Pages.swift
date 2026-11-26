@@ -2464,91 +2464,297 @@ struct ContextPage: View {
     }
 }
 
-// MARK: Ask
+// MARK: Chat
 
-struct AskPage: View {
+/// The Ask page as a chat, after the pattern Nils sent: a
+/// thread of questions and answers about the meetings and
+/// context files, an input pill at the foot with Past chats
+/// inside it, and every conversation kept so it can be
+/// picked up again. Retrieval and the model call are the
+/// old Ask page's: rank on the Mac, answer from the best
+/// material only, deep model with the live one as fallback.
+/// Follow-ups ride on the conversation so far, trimmed by
+/// ChatPrompt.window.
+struct ChatPage: View {
     @Environment(AppModel.self) private var model
     @Query(sort: \Meeting.startedAt, order: .reverse) private var meetings: [Meeting]
     @Query private var files: [ContextFile]
-    @State private var question = ""
-    @State private var answer = ""
-    @State private var sources: [String] = []
+    @Query(sort: \ChatThread.updatedAt, order: .reverse) private var threads: [ChatThread]
+
+    @State private var thread: ChatThread?
+    @State private var messages: [ChatMessage] = []
+    @State private var input = ""
     @State private var isAsking = false
     @State private var askError: String?
-    @State private var deepNote: String?
+    @State private var turnFellBack = false
+    @State private var showPastChats = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: Space.md) {
-            Text("Ask across your past meetings and context files. Everything is searched on this Mac.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-            HStack {
-                TextField("What did we agree about the salary band?", text: $question)
-                    .textFieldStyle(.roundedBorder)
-                    .onSubmit(ask)
-                Button("Ask", systemImage: "paperplane") { ask() }
-                    .buttonStyle(InkButtonStyle())
-                    .disabled(question.isEmpty || isAsking)
-            }
+            header
+            messagesList
             if let askError {
                 Text(askError).foregroundStyle(.red).font(.callout)
             }
-            if let deepNote {
-                Text(deepNote).foregroundStyle(.secondary).font(.callout)
-            }
-            ScrollView {
-                Text(answer.isEmpty ? "The answer will appear here." : answer)
-                    .foregroundStyle(answer.isEmpty ? .secondary : .primary)
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(Space.md)
-            }
-            .panelSurface()
-            .frame(minHeight: 160)
-            if !sources.isEmpty {
-                Text("Sources: \(sources.joined(separator: " · "))")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            if isAsking { ProgressView().controlSize(.small) }
+            inputPill
         }
         .padding(Space.margin)
         .navigationTitle("Ask")
+        .sheet(isPresented: $showPastChats) { pastChatsSheet }
+        .onAppear {
+            // Coming back to the page reopens the latest chat,
+            // so a conversation survives a page switch.
+            if thread == nil, messages.isEmpty, let latest = threads.first {
+                openThread(latest)
+            }
+        }
     }
 
-    private func ask() {
-        let asked = question.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !asked.isEmpty else { return }
-        isAsking = true
+    private var header: some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text("Ask anything about your meetings and context files. Everything is searched on this Mac.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+            Spacer()
+            Button("New Chat", systemImage: "square.and.pencil") { newChat() }
+                .buttonStyle(QuietButtonStyle())
+                .disabled(messages.isEmpty && thread == nil)
+        }
+    }
+
+    private var messagesList: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                if messages.isEmpty {
+                    emptyState
+                } else {
+                    LazyVStack(alignment: .leading, spacing: Space.md) {
+                        ForEach(messages) { message in
+                            messageRow(message)
+                                .id(message.id)
+                        }
+                        if isAsking, messages.last?.text.isEmpty == true {
+                            ProgressView().controlSize(.small)
+                        }
+                    }
+                    .padding(Space.sm)
+                }
+            }
+            .panelSurface()
+            .onChange(of: messages.count) { _, _ in scrollToBottom(proxy) }
+            .onChange(of: messages.last?.text) { _, _ in scrollToBottom(proxy) }
+        }
+    }
+
+    private func scrollToBottom(_ proxy: ScrollViewProxy) {
+        guard let last = messages.last else { return }
+        withAnimation(RailTiming.glide) { proxy.scrollTo(last.id, anchor: .bottom) }
+    }
+
+    private var emptyState: some View {
+        VStack(alignment: .leading, spacing: Space.md) {
+            Text("Nothing asked yet. Questions search every meeting and context file on this Mac, and follow-ups remember the conversation.")
+                .foregroundStyle(.secondary)
+            ForEach(examples, id: \.self) { example in
+                Button(example) {
+                    input = example
+                    send()
+                }
+                .buttonStyle(QuietButtonStyle())
+            }
+        }
+        .padding(Space.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var examples: [String] {
+        [
+            "What did we agree about the salary band?",
+            "Which questions came up more than once?",
+            "What are my open follow-ups?",
+        ]
+    }
+
+    @ViewBuilder
+    private func messageRow(_ message: ChatMessage) -> some View {
+        if message.role == "user" {
+            HStack {
+                Spacer(minLength: 48)
+                Text(message.text)
+                    .foregroundStyle(Surface.onInk)
+                    .textSelection(.enabled)
+                    .padding(.horizontal, Space.md)
+                    .padding(.vertical, Space.sm)
+                    .background(Surface.ink, in: RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
+            }
+        } else {
+            VStack(alignment: .leading, spacing: Space.xs) {
+                Text(message.text.isEmpty ? "Thinking..." : message.text)
+                    .foregroundStyle(message.text.isEmpty ? .secondary : .primary)
+                    .textSelection(.enabled)
+                    .padding(.horizontal, Space.md)
+                    .padding(.vertical, Space.sm)
+                    .background(Surface.inset, in: RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
+                if !message.sources.isEmpty {
+                    Text("Sources: \(message.sources.joined(separator: " · "))")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                if let note = message.note {
+                    Text(note)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    /// The input pill from Nils's screenshot: the question
+    /// field, Past chats as a chip inside the pill, and a
+    /// send button. Return sends too.
+    private var inputPill: some View {
+        HStack(spacing: Space.sm) {
+            TextField("Ask anything about your meetings", text: $input)
+                .textFieldStyle(.plain)
+                .onSubmit(send)
+            Button { showPastChats = true } label: {
+                HStack(spacing: Space.xs) {
+                    Text("Past chats")
+                    Image(systemName: "arrow.up.forward")
+                }
+                .font(.callout.weight(.medium))
+            }
+            .buttonStyle(QuietButtonStyle())
+            Button("Send", systemImage: "paperplane") { send() }
+                .labelStyle(.iconOnly)
+                .buttonStyle(InkButtonStyle())
+                .disabled(input.trimmingCharacters(in: .whitespaces).isEmpty || isAsking)
+        }
+        .padding(.horizontal, Space.md)
+        .padding(.vertical, Space.sm)
+        .panelSurface(radius: Radius.overlay)
+    }
+
+    private var pastChatsSheet: some View {
+        VStack(alignment: .leading, spacing: Space.md) {
+            HStack {
+                Text("Past chats")
+                    .font(.title3.weight(.semibold))
+                Spacer()
+                Button("Done") { showPastChats = false }
+                    .buttonStyle(QuietButtonStyle())
+            }
+            if threads.isEmpty {
+                Text("No chats yet. Your conversations will collect here.")
+                    .foregroundStyle(.secondary)
+            } else {
+                List(threads) { item in
+                    HStack {
+                        Button {
+                            openThread(item)
+                            showPastChats = false
+                        } label: {
+                            VStack(alignment: .leading, spacing: Space.xs) {
+                                Text(item.title)
+                                    .lineLimit(1)
+                                Text("\(item.messages.count) messages · \(item.updatedAt.formatted(date: .abbreviated, time: .shortened))")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        Spacer()
+                        Button("Delete", systemImage: "trash") { deleteThread(item) }
+                            .labelStyle(.iconOnly)
+                            .buttonStyle(QuietButtonStyle())
+                            .help("Delete this chat")
+                    }
+                }
+                .listStyle(.plain)
+            }
+        }
+        .padding(Space.lg)
+        .frame(width: 440, height: 380)
+    }
+
+    private func openThread(_ item: ChatThread) {
+        thread = item
+        messages = item.messages
         askError = nil
-        deepNote = nil
-        answer = ""
-        sources = []
+    }
+
+    private func newChat() {
+        thread = nil
+        messages = []
+        input = ""
+        askError = nil
+    }
+
+    private func deleteThread(_ item: ChatThread) {
+        if thread?.uuid == item.uuid { newChat() }
+        model.container.mainContext.delete(item)
+        try? model.container.mainContext.save()
+    }
+
+    private func persist() {
+        guard let thread else { return }
+        thread.messagesJSON = ChatMessage.encode(messages)
+        thread.updatedAt = Date.now
+        try? model.container.mainContext.save()
+    }
+
+    private func send() {
+        let asked = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !asked.isEmpty, !isAsking else { return }
+        input = ""
+        askError = nil
+        turnFellBack = false
+        if thread == nil {
+            let created = ChatThread(title: String(asked.prefix(60)))
+            model.container.mainContext.insert(created)
+            thread = created
+        }
+        let history = ChatPrompt.window(messages)
+        messages.append(ChatMessage(role: "user", text: asked))
+        let answerID = UUID()
+        messages.append(ChatMessage(id: answerID, role: "assistant", text: ""))
+        persist()
+        isAsking = true
 
         // Rank meetings and files on the Mac, then send the best of each.
         let meetingDocs = meetings.map { (name: $0.title, text: TranscriptSegment.plainText($0.segments) + "\n" + $0.summary, pinned: false) }
         let fileDocs = files.map { (name: $0.name, text: $0.text, pinned: $0.isPinned) }
         let bestMeetings = ContextRanker.rank(documents: meetingDocs, query: asked).prefix(3)
         let bestFiles = ContextRanker.rank(documents: fileDocs, query: asked).prefix(3)
-        sources = (bestMeetings.map(\.name) + bestFiles.map(\.name))
-        var contextText = ""
-        for doc in bestMeetings { contextText += "From meeting \(doc.name):\n\(doc.text.prefix(4_000))\n\n" }
-        for doc in bestFiles { contextText += "From \(doc.name):\n\(doc.text.prefix(4_000))\n\n" }
-        if contextText.isEmpty { contextText = "(Nothing in the meetings or files matches this question. Say so plainly, in one line, and do not guess.)" }
+        let turnSources = (bestMeetings.map(\.name) + bestFiles.map(\.name))
+        var material = ""
+        for doc in bestMeetings { material += "From meeting \(doc.name):\n\(doc.text.prefix(4_000))\n\n" }
+        for doc in bestFiles { material += "From \(doc.name):\n\(doc.text.prefix(4_000))\n\n" }
+        if material.isEmpty { material = "(Nothing in the meetings or files matches this question. Say so plainly, in one line, and do not guess.)" }
 
         Task {
             do {
                 for try await piece in DeepWork.stream(
-                    system: "You answer questions about the user's own meetings and files. Use only the material given, and say plainly when it does not cover the question. Name the meeting or file each fact came from. Answer directly, in the language of the question.",
-                    user: "Material:\n\(contextText)\n\nQuestion: \(asked)",
-                    onFallback: { deepNote = "Answered by the live model; the deep model was unavailable." }
+                    system: ChatPrompt.system,
+                    user: ChatPrompt.userMessage(history: history, material: material, question: asked),
+                    onFallback: { turnFellBack = true }
                 ) {
-                    answer += piece
+                    if let index = messages.firstIndex(where: { $0.id == answerID }) {
+                        messages[index].text += piece
+                    }
+                }
+                if let index = messages.firstIndex(where: { $0.id == answerID }) {
+                    messages[index].sources = turnSources
+                    if turnFellBack { messages[index].note = "Answered by the live model; the deep model was unavailable." }
+                    if messages[index].text.isEmpty { messages[index].text = "No answer came back." }
                 }
             } catch {
                 askError = error.localizedDescription
+                messages.removeAll { $0.id == answerID && $0.text.isEmpty }
             }
             isAsking = false
+            persist()
         }
     }
 }
